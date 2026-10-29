@@ -21,39 +21,63 @@ as the app's own **service account**, so the Backlink Tracker only has to be sha
 The Google Sheet is the only store. Sessions are an AES-256-GCM sealed, httpOnly cookie holding just the
 person's email and name. No Google token, key or Firecrawl key reaches the browser.
 
-## 1. Google Cloud setup
+## 1. Google Cloud setup (company project)
 
-Do this once, in the Google Cloud project you'll deploy to.
+Everything on the Google side lives in the company's Google Cloud project, under the mysense.com.my
+Workspace organisation. Use your **company** Google account for every `gcloud` command and console step,
+not a personal one:
+
+```bash
+gcloud auth login                       # sign in with your @mysense.com.my account
+gcloud auth list                        # the active account must be @mysense.com.my
+PROJECT=your-company-project-id
+REGION=asia-southeast1
+gcloud config set project $PROJECT
+gcloud config set run/region $REGION
+```
+
+### Org policies to expect
+
+The mysense.com.my organisation may enforce these. The setup below works with both.
+
+- **Service account key creation is blocked** (`iam.disableServiceAccountKeyCreation`).
+  Don't create JSON keys. The app uses **Workload Identity only**: Cloud Run runs as the service account and
+  gets tokens from the metadata server. As a result, you can't run the app locally against the real sheet.
+  Use `npm test` (full mocks) locally and the deployed service for real data.
+- **Domain-restricted sharing** applies to two things:
+  - **Drive sharing.** The service account's address ends in `iam.gserviceaccount.com`, which Workspace treats as outside
+    mysense.com.my. A Workspace admin must allow sharing the Backlink Tracker with it (Admin console →
+    Apps → Google Workspace → Drive and Docs → Sharing settings: allow external sharing for the Backlink Tracker's
+    owner or organisational unit, or add a trust rule for the service account's address). Until then, the Share dialog refuses the address.
+  - **Public Cloud Run access** (`iam.allowedPolicyMemberDomains`). That policy also blocks `allUsers`, so
+    `--allow-unauthenticated` fails. The plan is an admin exception scoped to this one service: an org-policy
+    exception that lets `allUsers` hold `roles/run.invoker` on `backlink-builder` only. Once it's in place, grant it with
+    `gcloud run services add-iam-policy-binding backlink-builder --region $REGION --member allUsers --role roles/run.invoker`.
+    Public access only reaches the sign-in page; the app's own Google sign-in and allow-list still gate everything.
 
 ### Service account (Sheets access)
 
 ```bash
-PROJECT=your-gcp-project
-gcloud config set project $PROJECT
 gcloud services enable sheets.googleapis.com run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 gcloud iam service-accounts create backlink-builder --display-name "Backlink Builder"
 SA=backlink-builder@$PROJECT.iam.gserviceaccount.com
 ```
 
-Open the **Backlink Tracker** sheet → **Share** → add `$SA` (for example
-`backlink-builder@your-gcp-project.iam.gserviceaccount.com`) as **Editor**, and untick "Notify people".
-The server prints the email it's using at startup:
-`Sheets service account (metadata): backlink-builder@…`.
-If the sheet isn't shared with it, the page shows "Google Sheets refused the request…" and the message names the email to share with.
-
-On Cloud Run no key file is needed. The service runs *as* this service account (Workload Identity),
-and tokens come from the metadata server. Only create a JSON key if you want to run locally against the real sheet (see step 3).
+Open the **Backlink Tracker** sheet → **Share** → add `$SA` as **Editor** and untick "Notify people".
+If the dialog refuses the address, see "Domain-restricted sharing" above.
+The server prints the address it uses at startup (`Sheets service account (metadata): backlink-builder@…`).
+If the sheet isn't shared with it, the page shows "Google Sheets refused the request…" and names the address.
 
 ### OAuth client (sign-in)
 
-1. **APIs & Services → OAuth consent screen**: choose **External** and click **Publish app** (**In production**).
-   The app only asks for `openid`, `email` and `profile`, which are non-sensitive scopes, so Google verification isn't needed,
-   there's no test-user list, and sign-ins don't expire after 7 days. (**Internal** also works if everyone uses mysense.com.my Workspace accounts.)
-2. **Credentials → Create credentials → OAuth client ID**, type **Web application**.
-   - Authorized redirect URIs: `https://<your-cloud-run-url>/auth/callback`, plus `http://localhost:8080/auth/callback` for local use.
-3. Keep the client ID and secret for the env vars below.
+1. **APIs & Services → OAuth consent screen**: choose **Internal**. Only mysense.com.my accounts can sign in,
+   and no Google verification or test-user list is needed. The app asks only for `openid`, `email` and `profile`.
+2. **Credentials → Create credentials → OAuth client ID**, type **Web application**, name "Backlink Builder".
+   You add the redirect URI after the first deploy, once the URL is known (step 5).
+3. Keep the client ID and secret for step 5.
 
-Anyone with a Google account can reach the Google consent screen, but only allow-listed emails get a session.
+With an Internal consent screen, Google itself only lets mysense.com.my accounts through. The app's
+`ALLOWED_DOMAINS=mysense.com.my` check is a second gate.
 
 ## 2. Environment variables
 
@@ -65,9 +89,9 @@ See `.env.example`.
 | `SHEET_ID` | yes | `18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ`. The server won't start if it's missing or doesn't match the ID in `public/index.html`. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | yes | The OAuth client from step 1. |
 | `SESSION_SECRET` | yes | 32+ random characters (`openssl rand -base64 48`). Changing it signs everyone out. |
-| `ALLOWED_DOMAINS` | one of these | Comma-separated, e.g. `mysense.com.my`. |
-| `ALLOWED_EMAILS` | one of these | Comma-separated, e.g. `someone@gmail.com`. Use this for gmail.com addresses (never allow the whole gmail.com domain). |
-| `GOOGLE_APPLICATION_CREDENTIALS` | local only | Path to a service account JSON key. Leave unset on Cloud Run, where the attached service account is used. |
+| `ALLOWED_DOMAINS` | yes | `mysense.com.my`. |
+| `ALLOWED_EMAILS` | no | Extra individual addresses. With an Internal consent screen these must still be mysense.com.my accounts. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | no | Path to a service account JSON key, for running outside Cloud Run. Not used in the company project (key creation is blocked); leave unset. |
 | `FIRECRAWL_API_KEY` | no | Without it, the Check panel shows its "use the Google links" fallback. |
 | `SEARCHES_PER_HOUR` | no | Per-person Firecrawl limit, default 30. |
 | `PORT` | no | Default 8080. Cloud Run sets it. |
@@ -76,22 +100,17 @@ See `.env.example`.
 
 ## 3. Run locally
 
-Needs Node 20 or later.
+Needs Node 20.6 or later.
 
 ```bash
 npm ci
-cp .env.example .env   # then fill it in
-npm run dev            # http://localhost:8080
+npx playwright install chromium
+npm test
 ```
 
-To reach the real sheet locally, create a key for the service account and point `GOOGLE_APPLICATION_CREDENTIALS` at it.
-Keep the key file outside the repo, and delete the key when you're done:
-
-```bash
-gcloud iam service-accounts keys create ~/backlink-builder-key.json --iam-account $SA
-```
-
-`npm run build && npm start` runs the compiled server (load the env vars yourself; `npm start` doesn't read `.env`).
+In the company project, local runs use the mocks only (see "Org policies"). The app needs a service account key to
+reach the real sheet from a laptop, and key creation is blocked. `npm run dev` with a filled-in `.env` still starts the
+server and the sign-in flow, but Sheets calls fail with "Google Sheets isn't set up for this app yet".
 
 ## 4. Tests
 
@@ -112,14 +131,13 @@ Sheets and Firecrawl (`tests/mocks/upstream.ts`), using the fixture sheet in `te
 ## 5. Deploy to Cloud Run
 
 No local Docker needed: `gcloud run deploy --source .` builds the `Dockerfile` with Cloud Build.
+Run these as your company account (step 1), with `PROJECT`, `REGION` and `SA` set.
 
 ```bash
-REGION=asia-southeast1
-
-# Secrets
-printf '%s' "$GOOGLE_CLIENT_SECRET" | gcloud secrets create bb-google-client-secret --data-file=-
+# Secrets. `read -rs` takes the value without echoing it or saving it to shell history.
+read -rs V && printf '%s' "$V" | gcloud secrets create bb-google-client-secret --data-file=- && unset V   # paste the OAuth client secret, Enter
 openssl rand -base64 48 | tr -d '\n' | gcloud secrets create bb-session-secret --data-file=-
-printf '%s' "$FIRECRAWL_API_KEY" | gcloud secrets create bb-firecrawl-key --data-file=-
+read -rs V && printf '%s' "$V" | gcloud secrets create bb-firecrawl-key --data-file=- && unset V          # paste the Firecrawl key, Enter
 for s in bb-google-client-secret bb-session-secret bb-firecrawl-key; do
   gcloud secrets add-iam-policy-binding $s --member "serviceAccount:$SA" --role roles/secretmanager.secretAccessor
 done
@@ -132,24 +150,30 @@ gcloud run deploy backlink-builder \
   --max-instances=1 \
   --memory 256Mi \
   --allow-unauthenticated \
-  --set-env-vars "SHEET_ID=18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ,GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID,ALLOWED_DOMAINS=mysense.com.my,APP_ORIGIN=https://placeholder.invalid" \
+  --set-env-vars "SHEET_ID=18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ,GOOGLE_CLIENT_ID=<client-id>,ALLOWED_DOMAINS=mysense.com.my,APP_ORIGIN=https://placeholder.invalid" \
   --set-secrets "GOOGLE_CLIENT_SECRET=bb-google-client-secret:latest,SESSION_SECRET=bb-session-secret:latest,FIRECRAWL_API_KEY=bb-firecrawl-key:latest"
 
-# Set the real origin, then add <URL>/auth/callback to the OAuth client's redirect URIs.
+# Set the real origin.
 URL=$(gcloud run services describe backlink-builder --region $REGION --format 'value(status.url)')
 gcloud run services update backlink-builder --region $REGION --update-env-vars "APP_ORIGIN=$URL"
+```
 
-# Check the startup log for the service account line.
+Then, in the console, add `<URL>/auth/callback` to the OAuth client's **Authorized redirect URIs**, and check the startup log:
+
+```bash
 gcloud run services logs read backlink-builder --region $REGION --limit 20
 ```
 
-To allow gmail.com teammates, add `ALLOWED_EMAILS=a@gmail.com,b@gmail.com` to `--set-env-vars`, or set it later with
-`--update-env-vars` (use `^;^ALLOWED_EMAILS=a@gmail.com,b@gmail.com` so the commas aren't read as separators).
+Look for `Sheets service account (metadata): backlink-builder@…`.
 
-Redeploys are just `gcloud run deploy backlink-builder --source . --region $REGION` (the settings above are kept).
+If `--allow-unauthenticated` fails with a policy error, that's domain-restricted sharing (see "Org policies").
+Stop there and wait for the admin exception. Don't switch to another access method. Once the exception is in place,
+grant `allUsers` the invoker role on this service (the command is under "Org policies") and carry on.
 
-- `--service-account $SA`: the service runs as the Backlink Builder account, which is how it gets Sheets tokens (Workload Identity, no key file).
-- `--allow-unauthenticated`: intended. The app does its own Google sign-in and allow-list. For a second layer, you can put it behind Identity-Aware Proxy.
+Redeploys are just `gcloud run deploy backlink-builder --source . --region $REGION`. The settings above are kept.
+
+- `--service-account $SA`: the service runs as the Backlink Builder account (Workload Identity, no key file).
+- `--allow-unauthenticated`: intended. The app does its own Google sign-in and allow-list.
 - `--max-instances=1`: the Firecrawl rate limit is held in memory per instance (there's no database). One instance is plenty for a team tool.
 
 ## Security notes
