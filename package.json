@@ -1,0 +1,26 @@
+{
+  "name": "malaysia-backlink-builder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev": "node --env-file=.env --watch --import tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "express": "4.22.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/express": "4.17.25",
+    "@types/node": "20.19.43",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,16 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Test output
+test-results/
+playwright-report/
+
+# Secrets: env files and service account keys
+.env
+.env.*
+!.env.example
+*-key.json
+*.pem
+
+.DS_Store
