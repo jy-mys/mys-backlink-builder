@@ -76,3 +76,13 @@ export async function addSheet(cfg: Config, sa: TokenSource, title: string, hidd
     requests: [{ addSheet: { properties: { title, hidden } } }],
   });
 }
+
+export async function batchUpdateValues(cfg: Config, sa: TokenSource, data: { range: string; values: Cell[][] }[], input: 'USER_ENTERED' | 'RAW' = 'RAW') {
+  return call(cfg, sa, 'POST', base(cfg.sheetId) + '/values:batchUpdate', {}, { valueInputOption: input, data });
+}
+
+export async function appendColumns(cfg: Config, sa: TokenSource, sheetId: number, length: number) {
+  return call(cfg, sa, 'POST', base(cfg.sheetId) + ':batchUpdate', {}, {
+    requests: [{ appendDimension: { sheetId, dimension: 'COLUMNS', length } }],
+  });
+}

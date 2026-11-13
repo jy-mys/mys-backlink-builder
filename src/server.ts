@@ -5,6 +5,7 @@ import { AccessList } from './access.js';
 import { INDEX_PATH, PUBLIC_DIR, isStaff, loadConfig, type Config } from './config.js';
 import { authRouter } from './auth.js';
 import { privacyPage } from './privacy.js';
+import { cronRouter, linksRouter } from './linkcheck.js';
 import { ToolError } from './errors.js';
 import { RateLimiter } from './ratelimit.js';
 import { checkOrigin, inlineScriptHash, securityHeaders } from './security.js';
@@ -40,6 +41,8 @@ export function createApp(cfg: Config, access = new AccessList(cfg)) {
   app.get('/privacy', (_req, res) => privacyPage(res));
   app.use('/auth', authRouter(cfg, access));
   app.use('/staff', staffRouter(cfg, access));
+  app.use('/links', linksRouter(cfg, access));
+  app.use('/api/cron', cronRouter(cfg));
 
   app.get(['/', '/index.html'], async (req, res) => {
     // If the list can't be read, still serve the page: it shows the sheet error itself.

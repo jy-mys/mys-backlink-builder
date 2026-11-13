@@ -1,0 +1,23 @@
+# Every Monday 09:00 Malaysia time, ask the app to crawl every client's live links.
+# Needs the repository secret CRON_SECRET (same value as CRON_SECRET in Render).
+# Run it by hand from the Actions tab with "Run workflow".
+name: Weekly link check
+on:
+  schedule:
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Crawl every client's live links
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://mys-backlink-builder.onrender.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::error::Add the CRON_SECRET repository secret first."; exit 1; fi
+          # The free Render service may be asleep; the retries give it time to wake up.
+          curl -sS --fail-with-body --max-time 1500 --retry 4 --retry-delay 30 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/linkcheck"

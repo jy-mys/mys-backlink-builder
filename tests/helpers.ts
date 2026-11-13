@@ -11,6 +11,7 @@ import { SHEET_ID } from './fixtures/sheet.js';
 
 export const SESSION_SECRET = 'test-session-secret-0123456789-abcdefghijkl';
 export const CLIENT_SECRET = 'GOCSPX-test-client-SECRET';
+export const CRON_SECRET = 'test-cron-secret-0123456789-abcdefghijklmnop';
 // 29 Oct 2026, 10:00 in Kuala Lumpur. Both pages run on this frozen clock.
 export const NOW = new Date('2026-10-29T10:00:00+08:00');
 
@@ -50,6 +51,8 @@ export async function startStack(opts: { firecrawlKey?: string; credentials?: 'k
     GOOGLE_TOKEN_URL: upstream.url + '/token',
     SHEETS_API_BASE: upstream.url,
     FIRECRAWL_API_BASE: upstream.url,
+    CRAWL_ALLOW_PRIVATE: '1',
+    CRON_SECRET: CRON_SECRET,
   });
   server.on('request', createApp(cfg));
   return {

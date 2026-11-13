@@ -24,6 +24,9 @@ services:
         value: /etc/secrets/sa-key.json
       - key: SESSION_SECRET
         generateValue: true
+      # Weekly link check: copy this value into the GitHub repository secret CRON_SECRET.
+      - key: CRON_SECRET
+        generateValue: true
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

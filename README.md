@@ -14,6 +14,8 @@ with this server:
 | `GET /api/me` | `{ name, staff }` of the signed-in person (fills "Done by", "Reviewed by", "Checked on"). |
 | `POST /api/tool` | The page's tool calls. Only `get_values`, `update_values`, `get_spreadsheet` on the Backlink Tracker sheet, and `firecrawl_search`. Everything else is refused. |
 | `GET /staff` | Staff only: add and remove interns' Gmail addresses (see "Who can sign in"). |
+| `GET /links`, `POST /links/crawl` | Live link check: crawl a client's Live rows and record whether each page still links to the client's site (see "Live link check"). |
+| `POST /api/cron/linkcheck` | Weekly crawl of every client, called by GitHub Actions with `CRON_SECRET`. |
 | `GET /privacy` | Public privacy notice, linked from the Google consent screen. |
 | `GET /healthz` | Liveness check. |
 
@@ -96,9 +98,10 @@ See `.env.example`.
 | `GOOGLE_APPLICATION_CREDENTIALS` | no | Path to a service account JSON key, for running outside Cloud Run. Not used in the company project (key creation is blocked); leave unset. |
 | `FIRECRAWL_API_KEY` | no | Without it, the Check panel shows its "use the Google links" fallback. |
 | `SEARCHES_PER_HOUR` | no | Per-person Firecrawl limit, default 30. |
+| `CRON_SECRET` | no | 32+ characters. Turns on `POST /api/cron/linkcheck` for the weekly crawl. Render generates it; copy it into the GitHub repository secret of the same name. |
 | `PORT` | no | Default 8080. Cloud Run sets it. |
 
-`GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `GCE_METADATA_HOST`, `SHEETS_API_BASE` and `FIRECRAWL_API_BASE` exist only so the tests can point at local mocks. Don't set them in production.
+`CRAWL_ALLOW_PRIVATE`, `GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `GCE_METADATA_HOST`, `SHEETS_API_BASE` and `FIRECRAWL_API_BASE` exist only so the tests can point at local mocks. Don't set them in production.
 
 ## 3. Run locally
 
@@ -193,6 +196,27 @@ Render's free plan sleeps after 15 minutes without visits; the next visit takes 
 5. The log should show `Backlink Builder on :10000 (https://<service>.onrender.com)`.
 
 `APP_ORIGIN` is not needed: the app uses `RENDER_EXTERNAL_URL`, which Render sets. Set `APP_ORIGIN` only for a custom domain.
+
+## Live link check
+
+**Check live links** (beside "Open tracker sheet") opens `/links` for the client picked in step 1. **Crawl … live links now**
+opens every row marked **Live** on that client's tab, fetches the page in column J itself (no Firecrawl), and looks for a link
+to the client's website (cell M3). It writes:
+
+- **Link checked (K):** Dofollow, Nofollow, Sponsored or UGC from the link's `rel`, or Citation (no link) when the site is listed
+  without a link and the Sites tab says no link is expected. Left as it was when no link is found.
+- **Crawl result (R)** and **Crawled on (S):** what it found, in plain English: OK, listed without a link, not found, page error,
+  or blocked. The columns are added to the tab the first time.
+
+Many big directories (Clutch, GoodFirms, Sortlist…) refuse automated visits with HTTP 403; those rows say "blocked the crawler"
+so someone checks them by hand. Pages that build their content with JavaScript may show "not found" for the same reason.
+
+The crawler only fetches http(s) on ports 80/443 and refuses any address that resolves to a private, loopback or link-local
+range, on every redirect, so a URL in the sheet can't reach internal services. Only tabs listed on Summary can be crawled.
+
+**Weekly:** `.github/workflows/weekly-link-check.yml` calls `POST /api/cron/linkcheck` every Monday 09:00 Malaysia time.
+Set up once: in Render, copy the generated `CRON_SECRET`; in GitHub, **Settings → Secrets and variables → Actions → New
+repository secret**, name `CRON_SECRET`, paste. Test it from the **Actions** tab with **Run workflow**.
 
 ## Who can sign in
 

@@ -24,10 +24,10 @@ async function shot(browser: Browser, target: 'original' | 'app', vp: { w: numbe
   await prepare(page);
   await page.goto(target === 'app' ? st.appUrl : st.originalUrl);
   await settle(page);
-  // The staff-only "Manage interns" button is the app's own addition; leave it out of the comparison.
+  // The app's own buttons (Check live links, Manage interns) aren't in the original; leave them out.
   if (target === 'app') {
     await page.locator('#mbbStaff').waitFor();
-    await page.evaluate(() => document.getElementById('mbbStaff')!.remove());
+    await page.evaluate(() => { document.getElementById('mbbStaff')!.remove(); document.getElementById('mbbLinks')!.remove(); });
   }
   if (state !== 'no-client') await pickClient(page, 'MYSense');
   if (state === 'client-seo') await page.check('#seoCk');

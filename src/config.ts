@@ -19,6 +19,9 @@ export interface Config {
   allowedDomains: Set<string>;
   firecrawlKey: string;
   searchesPerHour: number;
+  cronSecret: string;
+  // Tests only: lets the link crawler fetch the local mock sites.
+  crawlAllowPrivate: boolean;
   // Upstream base URLs. Only the tests override these, to point at local mocks.
   googleAuthUrl: string;
   googleTokenUrl: string;
@@ -33,6 +36,12 @@ function list(v: string | undefined): Set<string> {
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const v = (env[name] || '').trim();
   if (!v) throw new Error(`Missing required env var ${name}`);
+  return v;
+}
+
+function cronSecret(env: NodeJS.ProcessEnv): string {
+  const v = (env.CRON_SECRET || '').trim();
+  if (v && v.length < 32) throw new Error('CRON_SECRET must be at least 32 characters');
   return v;
 }
 
@@ -74,6 +83,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedDomains,
     firecrawlKey: (env.FIRECRAWL_API_KEY || '').trim(),
     searchesPerHour: Math.max(1, parseInt(env.SEARCHES_PER_HOUR || '30', 10) || 30),
+    cronSecret: cronSecret(env),
+    crawlAllowPrivate: env.CRAWL_ALLOW_PRIVATE === '1',
     googleAuthUrl: env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
     googleTokenUrl: env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
     sheetsBase: (env.SHEETS_API_BASE || 'https://sheets.googleapis.com').replace(/\/$/, ''),

@@ -39,19 +39,29 @@
     }
   };
 
-  // Staff only: a "Manage interns" button beside "Open tracker sheet", linking to /staff.
+  // Buttons beside "Open tracker sheet": "Check live links" for everyone signed in (opens
+  // /links for the client picked in step 1), and "Manage interns" for staff only.
   // Added here so public/index.html stays the original page.
+  function addButton(id, text, href, after){
+    var a = document.createElement('a');
+    a.id = id;
+    a.className = 'btn sheetbtn';
+    a.href = href;
+    a.textContent = text;
+    after.parentNode.insertBefore(a, after.nextSibling);
+    return a;
+  }
   fetch('/api/me', {credentials: 'same-origin'}).then(function(res){
     return res.ok ? res.json() : null;
   }).then(function(body){
     var anchor = document.getElementById('tabLink');
-    if (!body || !body.staff || !anchor || document.getElementById('mbbStaff')) return;
-    var a = document.createElement('a');
-    a.id = 'mbbStaff';
-    a.className = 'btn sheetbtn';
-    a.href = '/staff';
-    a.textContent = 'Manage interns';
-    anchor.parentNode.insertBefore(a, anchor.nextSibling);
+    if (!body || !anchor || document.getElementById('mbbLinks')) return;
+    var links = addButton('mbbLinks', 'Check live links', '/links', anchor);
+    links.addEventListener('click', function(){
+      var sel = document.getElementById('clientSel');
+      links.href = '/links' + (sel && sel.value ? '?tab=' + encodeURIComponent(sel.value) : '');
+    });
+    if (body.staff) addButton('mbbStaff', 'Manage interns', '/staff', links);
   }, function(){});
 
   window.claude = {
