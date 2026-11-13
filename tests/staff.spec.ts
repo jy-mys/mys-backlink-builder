@@ -171,3 +171,20 @@ test('the main page shows a Manage interns button to staff only', async ({ brows
     await ctx.close();
   }
 });
+
+test('the staff page forms work in a real browser (Origin is sent)', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: 'mbb', value: sessionCookie(st, { email: STAFF, name: 'Lead' }), url: st.appUrl }]);
+  const page = await ctx.newPage();
+  await page.goto(st.appUrl + '/staff');
+  await page.fill('#email', 'browser.intern@gmail.com');
+  await page.fill('#name', 'Browser Intern');
+  await page.click('button.primary');
+  await expect(page.locator('.msg')).toHaveText('browser.intern@gmail.com can now sign in.');
+  await page.locator('tr', { hasText: 'browser.intern@gmail.com' }).getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('.msg')).toHaveText('browser.intern@gmail.com can no longer sign in.');
+  // Staying on the external sheet link must not leak the app's URL.
+  const res = await page.goto(st.appUrl + '/staff');
+  expect(res!.headers()['referrer-policy']).toBe('same-origin');
+  await ctx.close();
+});
