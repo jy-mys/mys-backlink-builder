@@ -86,7 +86,7 @@ See `.env.example`.
 | Var | Required | Notes |
 |---|---|---|
 | `APP_ORIGIN` | yes | Public origin, e.g. `https://backlink-builder-xyz.a.run.app`. Must be https outside localhost. Used for the redirect URI and the CSRF Origin check. |
-| `SHEET_ID` | yes | `18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ`. The server won't start if it's missing or doesn't match the ID in `public/index.html`. |
+| `SHEET_ID` | yes | `1KcJjTGJpxOQVsfkdMFpZ6sIfEWGWtMj0kcm8eWyLkZ0`. The server won't start if it's missing or doesn't match the ID in `public/index.html`. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | yes | The OAuth client from step 1. |
 | `SESSION_SECRET` | yes | 32+ random characters (`openssl rand -base64 48`). Changing it signs everyone out. |
 | `ALLOWED_DOMAINS` | yes | `mysense.com.my`. |
@@ -150,7 +150,7 @@ gcloud run deploy backlink-builder \
   --max-instances=1 \
   --memory 256Mi \
   --allow-unauthenticated \
-  --set-env-vars "SHEET_ID=18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ,GOOGLE_CLIENT_ID=<client-id>,ALLOWED_DOMAINS=mysense.com.my,APP_ORIGIN=https://placeholder.invalid" \
+  --set-env-vars "SHEET_ID=1KcJjTGJpxOQVsfkdMFpZ6sIfEWGWtMj0kcm8eWyLkZ0,GOOGLE_CLIENT_ID=<client-id>,ALLOWED_DOMAINS=mysense.com.my,APP_ORIGIN=https://placeholder.invalid" \
   --set-secrets "GOOGLE_CLIENT_SECRET=bb-google-client-secret:latest,SESSION_SECRET=bb-session-secret:latest,FIRECRAWL_API_KEY=bb-firecrawl-key:latest"
 
 # Set the real origin.

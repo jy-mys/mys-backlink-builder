@@ -50,7 +50,7 @@ test('load clients, then pick a client', async ({ browser }) => {
   });
   expect(writes).toEqual([]);
   // The apostrophe tab name reached Sheets quoted, exactly as the page built it.
-  expect(st.upstream.sheetsRequests.map((r) => decodeURIComponent(r.path))).toContain("/v4/spreadsheets/18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ/values/'Dr Tan''s Clinic'!A1:Q");
+  expect(st.upstream.sheetsRequests.map((r) => decodeURIComponent(r.path))).toContain("/v4/spreadsheets/1KcJjTGJpxOQVsfkdMFpZ6sIfEWGWtMj0kcm8eWyLkZ0/values/'Dr Tan''s Clinic'!A1:Q");
 });
 
 test('change a status; marking Live asks for the URL and fills the date', async ({ browser }) => {

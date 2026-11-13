@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { ORIGINAL_HTML, ROOT } from './fixtures/sheet.js';
+import { ORIGINAL_HTML, ORIGINAL_SHEET_ID, ROOT, SHEET_ID } from './fixtures/sheet.js';
 
 // public/index.html must be the original fragment, byte for byte, apart from the skeleton,
-// the shim tag, the dropped claude.ai viewport meta and the six reworded errMsg() strings.
+// the shim tag, the dropped claude.ai viewport meta, the six reworded errMsg() strings and
+// the spreadsheet ID (the app uses the "Backlink Tracker Sheet" copy, not the original sheet).
 
 const REWORDED: [string, string][] = [
   ["Connect Google Sheets in claude.ai Settings → Connectors, then click Retry. Until then you can browse the list, but progress won\\'t load or save.",
@@ -32,6 +33,9 @@ test('index.html differs from the original only where allowed', () => {
     expect(expected.split(from).length, from).toBe(2);
     expected = expected.replace(from, to);
   }
+  // The sheet link and `var SHEET_ID`.
+  expect(expected.split(ORIGINAL_SHEET_ID).length).toBe(3);
+  expected = expected.replaceAll(ORIGINAL_SHEET_ID, SHEET_ID);
   const actual = readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
   expect(actual).toBe(expected);
   expect(actual).not.toMatch(/claude\.ai/);

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { buildStore, ORIGINAL_HTML, SHEET_ID, type Grid } from '../fixtures/sheet.js';
+import { buildStore, ORIGINAL_HTML, ORIGINAL_SHEET_ID, SHEET_ID, type Grid } from '../fixtures/sheet.js';
 
 // One local server that stands in for everything outside the app:
 //   Google sign-in (/o/oauth2/auth, /token), service-account tokens (/token with a JWT
@@ -225,7 +225,8 @@ export class Upstream {
 
   private mcp(b: { server: string; tool: string; input: any }, json: (s: number, d: unknown) => void) {
     try {
-      if (b.server === 'Google Sheets' && b.input.spreadsheetId !== SHEET_ID) throw new SheetError(404, 'Requested entity was not found.');
+      // The connector stand-in serves the original page, so it answers to the original page's ID.
+      if (b.server === 'Google Sheets' && b.input.spreadsheetId !== ORIGINAL_SHEET_ID) throw new SheetError(404, 'Requested entity was not found.');
       if (b.tool === 'get_values') { const v = this.getValues(b.input.range); return json(200, { payload: { ...v, values: (v as any).values || [] } }); }
       if (b.tool === 'update_values') return json(200, { payload: this.updateValues(b.input.range, b.input.values) });
       if (b.tool === 'get_spreadsheet') return json(200, { payload: this.getSpreadsheet() });

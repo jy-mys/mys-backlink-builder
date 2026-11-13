@@ -6,7 +6,9 @@ import path from 'node:path';
 
 export const ROOT = path.resolve(import.meta.dirname, '..', '..');
 export const ORIGINAL_HTML = readFileSync(path.join(ROOT, 'malaysia-backlink-builder.html'), 'utf8');
-export const SHEET_ID = '18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ';
+export const SHEET_ID = '1KcJjTGJpxOQVsfkdMFpZ6sIfEWGWtMj0kcm8eWyLkZ0';
+// The ID embedded in the original claude.ai page, which the parity tests still load.
+export const ORIGINAL_SHEET_ID = '18D9suxsJQY4L5LEbl2URVZP8jSvJPHwQPKbWoioyECQ';
 
 const dataJson = ORIGINAL_HTML.match(/<script type="application\/json" id="data">([\s\S]*?)<\/script>/)![1];
 export const DATA = JSON.parse(dataJson) as { industries: string[]; sites: any[] };
