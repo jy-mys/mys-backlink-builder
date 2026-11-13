@@ -143,3 +143,9 @@ test('the page\'s tool calls cannot read, write or list the access tab', async (
   expect(titles).toContain('MYSense');
   expect(titles).not.toContain(TAB);
 });
+
+test('the privacy notice is public', async () => {
+  const r = await get('/privacy', null);
+  expect(r.status).toBe(200);
+  expect(r.text).toContain('only your name and email address');
+});

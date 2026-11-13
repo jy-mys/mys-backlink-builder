@@ -4,6 +4,7 @@ import express, { type Request, type Response } from 'express';
 import { AccessList } from './access.js';
 import { INDEX_PATH, PUBLIC_DIR, loadConfig, type Config } from './config.js';
 import { authRouter } from './auth.js';
+import { privacyPage } from './privacy.js';
 import { ToolError } from './errors.js';
 import { RateLimiter } from './ratelimit.js';
 import { checkOrigin, inlineScriptHash, securityHeaders } from './security.js';
@@ -36,6 +37,7 @@ export function createApp(cfg: Config, access = new AccessList(cfg)) {
   app.use(securityHeaders(cfg, inlineScriptHash(html)));
 
   app.get('/healthz', (_req, res) => { res.type('text').send('ok'); });
+  app.get('/privacy', (_req, res) => privacyPage(res));
   app.use('/auth', authRouter(cfg, access));
   app.use('/staff', staffRouter(cfg, access));
 

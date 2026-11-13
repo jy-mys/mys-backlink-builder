@@ -14,6 +14,7 @@ with this server:
 | `GET /api/me` | `{ name }` of the signed-in person (fills "Done by", "Reviewed by", "Checked on"). |
 | `POST /api/tool` | The page's tool calls. Only `get_values`, `update_values`, `get_spreadsheet` on the Backlink Tracker sheet, and `firecrawl_search`. Everything else is refused. |
 | `GET /staff` | Staff only: add and remove interns' Gmail addresses (see "Who can sign in"). |
+| `GET /privacy` | Public privacy notice, linked from the Google consent screen. |
 | `GET /healthz` | Liveness check. |
 
 **How access works.** People sign in with Google only to prove who they are. Staff get in by
