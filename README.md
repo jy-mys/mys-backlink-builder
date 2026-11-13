@@ -11,7 +11,7 @@ with this server:
 | `GET /` | The page. Redirects to Google sign-in when there is no session. |
 | `GET /auth/login`, `/auth/callback` | Google sign-in (OAuth 2.0 with PKCE), identity only: `openid email profile`. |
 | `GET/POST /auth/logout` | Sign out. |
-| `GET /api/me` | `{ name }` of the signed-in person (fills "Done by", "Reviewed by", "Checked on"). |
+| `GET /api/me` | `{ name, staff }` of the signed-in person (fills "Done by", "Reviewed by", "Checked on"). |
 | `POST /api/tool` | The page's tool calls. Only `get_values`, `update_values`, `get_spreadsheet` on the Backlink Tracker sheet, and `firecrawl_search`. Everything else is refused. |
 | `GET /staff` | Staff only: add and remove interns' Gmail addresses (see "Who can sign in"). |
 | `GET /privacy` | Public privacy notice, linked from the Google consent screen. |
@@ -128,7 +128,7 @@ Sheets and Firecrawl (`tests/mocks/upstream.ts`), using the fixture sheet in `te
 - `visual.spec.ts`: the original (with a mock `window.claude`) and the app, at 1500 px and 390 px, with no client, with a client, and with SEO details on. The screenshots must be pixel-identical. Both sets are saved to `test-results/parity/`.
 - `behaviour.spec.ts`: the seven flows, run on both the original and the app. Asserts the exact ranges and values written, and that both write the same.
 - `errors.spec.ts`: an expired service-account token (refreshed silently), credentials unavailable, sheet not shared with the service account, Sheets 429, Firecrawl out of credits, Firecrawl not configured, and an expired or missing session.
-- `staff.spec.ts`: only staff open `/staff`; adding an intern creates the hidden tab and lets that Gmail sign in; removing one ends their session; non-Gmail addresses and cross-site posts are refused; the page's tool calls can't reach the tab.
+- `staff.spec.ts`: only staff open `/staff`; adding an intern creates the hidden tab and lets that Gmail sign in; removing one ends their session; non-Gmail addresses and cross-site posts are refused; the page's tool calls can't reach the tab; only staff see the Manage interns button.
 - `security.spec.ts`: other spreadsheet IDs, other tools, no or forged session, cross-origin and missing Origin, the Firecrawl cap and rate limit, the sign-in allow-list and identity-only scopes, Workload Identity tokens, and that no token, key or secret reaches the browser.
 
 ## 5. Deploy to Cloud Run
@@ -197,7 +197,7 @@ Render's free plan sleeps after 15 minutes without visits; the next visit takes 
 ## Who can sign in
 
 - **Permanent staff:** any account in `ALLOWED_DOMAINS` (`mysense.com.my`), plus anyone in `ALLOWED_EMAILS`.
-  Staff can open `/staff`.
+  Staff can open `/staff`, from the **Manage interns** button beside "Open tracker sheet" (added by `shim.js`, staff only).
 - **Interns:** an `@gmail.com` address that staff have added on `/staff`. Interns can use the Backlink Builder
   but not `/staff`.
 

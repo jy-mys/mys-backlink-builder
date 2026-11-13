@@ -39,6 +39,21 @@
     }
   };
 
+  // Staff only: a "Manage interns" button beside "Open tracker sheet", linking to /staff.
+  // Added here so public/index.html stays the original page.
+  fetch('/api/me', {credentials: 'same-origin'}).then(function(res){
+    return res.ok ? res.json() : null;
+  }).then(function(body){
+    var anchor = document.getElementById('tabLink');
+    if (!body || !body.staff || !anchor || document.getElementById('mbbStaff')) return;
+    var a = document.createElement('a');
+    a.id = 'mbbStaff';
+    a.className = 'btn sheetbtn';
+    a.href = '/staff';
+    a.textContent = 'Manage interns';
+    anchor.parentNode.insertBefore(a, anchor.nextSibling);
+  }, function(){});
+
   window.claude = {
     use: function(name){
       return Promise.resolve(name === 'mcp' ? mcp : name === 'user' ? user : null);

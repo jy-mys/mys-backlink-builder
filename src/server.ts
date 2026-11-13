@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import express, { type Request, type Response } from 'express';
 import { AccessList } from './access.js';
-import { INDEX_PATH, PUBLIC_DIR, loadConfig, type Config } from './config.js';
+import { INDEX_PATH, PUBLIC_DIR, isStaff, loadConfig, type Config } from './config.js';
 import { authRouter } from './auth.js';
 import { privacyPage } from './privacy.js';
 import { ToolError } from './errors.js';
@@ -58,7 +58,7 @@ export function createApp(cfg: Config, access = new AccessList(cfg)) {
     try {
       const s = await signedIn(req, res);
       if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
-      res.json({ name: s.name });
+      res.json({ name: s.name, staff: isStaff(cfg, s.email) });
     } catch (err) {
       sendError(cfg, res, err);
     }

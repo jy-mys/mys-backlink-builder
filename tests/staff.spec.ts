@@ -149,3 +149,25 @@ test('the privacy notice is public', async () => {
   expect(r.status).toBe(200);
   expect(r.text).toContain('only your name and email address');
 });
+
+test('the main page shows a Manage interns button to staff only', async ({ browser }) => {
+  await post('/staff/add', STAFF, { email: INTERN, name: 'Aina Rahman' });
+  for (const [email, shown] of [[STAFF, true], [INTERN, false]] as const) {
+    const ctx = await browser.newContext();
+    await ctx.addCookies([{ name: 'mbb', value: sessionCookie(st, { email, name: 'x' }), url: st.appUrl }]);
+    const page = await ctx.newPage();
+    await page.goto(st.appUrl);
+    const btn = page.locator('#mbbStaff');
+    if (shown) {
+      await expect(btn).toHaveText('Manage interns');
+      await btn.click();
+      await expect(page).toHaveURL(/\/staff$/);
+      await expect(page.locator('h1')).toHaveText('Intern access');
+    } else {
+      await expect(page.locator('#tabLink')).toBeAttached();
+      await page.waitForTimeout(500);
+      await expect(btn).toHaveCount(0);
+    }
+    await ctx.close();
+  }
+});
