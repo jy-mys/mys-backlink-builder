@@ -13,10 +13,11 @@ with this server:
 | `GET/POST /auth/logout` | Sign out. |
 | `GET /api/me` | `{ name }` of the signed-in person (fills "Done by", "Reviewed by", "Checked on"). |
 | `POST /api/tool` | The page's tool calls. Only `get_values`, `update_values`, `get_spreadsheet` on the Backlink Tracker sheet, and `firecrawl_search`. Everything else is refused. |
+| `GET /staff` | Staff only: add and remove interns' Gmail addresses (see "Who can sign in"). |
 | `GET /healthz` | Liveness check. |
 
-**How access works.** People sign in with Google only to prove who they are. The allow-list
-(`ALLOWED_DOMAINS`, `ALLOWED_EMAILS`) decides who gets in. The server then reads and writes the sheet
+**How access works.** People sign in with Google only to prove who they are. Staff get in by
+`ALLOWED_DOMAINS` / `ALLOWED_EMAILS`; interns get in with a Gmail address staff have listed on `/staff`. The server then reads and writes the sheet
 as the app's own **service account**, so the Backlink Tracker only has to be shared with that one account.
 The Google Sheet is the only store. Sessions are an AES-256-GCM sealed, httpOnly cookie holding just the
 person's email and name. No Google token, key or Firecrawl key reaches the browser.
@@ -126,6 +127,7 @@ Sheets and Firecrawl (`tests/mocks/upstream.ts`), using the fixture sheet in `te
 - `visual.spec.ts`: the original (with a mock `window.claude`) and the app, at 1500 px and 390 px, with no client, with a client, and with SEO details on. The screenshots must be pixel-identical. Both sets are saved to `test-results/parity/`.
 - `behaviour.spec.ts`: the seven flows, run on both the original and the app. Asserts the exact ranges and values written, and that both write the same.
 - `errors.spec.ts`: an expired service-account token (refreshed silently), credentials unavailable, sheet not shared with the service account, Sheets 429, Firecrawl out of credits, Firecrawl not configured, and an expired or missing session.
+- `staff.spec.ts`: only staff open `/staff`; adding an intern creates the hidden tab and lets that Gmail sign in; removing one ends their session; non-Gmail addresses and cross-site posts are refused; the page's tool calls can't reach the tab.
 - `security.spec.ts`: other spreadsheet IDs, other tools, no or forged session, cross-origin and missing Origin, the Firecrawl cap and rate limit, the sign-in allow-list and identity-only scopes, Workload Identity tokens, and that no token, key or secret reaches the browser.
 
 ## 5. Deploy to Cloud Run
@@ -176,13 +178,26 @@ Redeploys are just `gcloud run deploy backlink-builder --source . --region $REGI
 - `--allow-unauthenticated`: intended. The app does its own Google sign-in and allow-list.
 - `--max-instances=1`: the Firecrawl rate limit is held in memory per instance (there's no database). One instance is plenty for a team tool.
 
+## Who can sign in
+
+- **Permanent staff:** any account in `ALLOWED_DOMAINS` (`mysense.com.my`), plus anyone in `ALLOWED_EMAILS`.
+  Staff can open `/staff`.
+- **Interns:** an `@gmail.com` address that staff have added on `/staff`. Interns can use the Backlink Builder
+  but not `/staff`.
+
+`/staff` keeps the list in a hidden **App access** tab in the Backlink Tracker sheet (Intern Gmail · Name ·
+Access · Changed by · Changed on), created the first time someone is added. Removing an intern marks the row
+"Removed", and their open session stops working on its next request. The server caches the list for a minute,
+so an edit made directly in the tab can take up to a minute to apply. The page's own tool calls can't read,
+write or list that tab, or write formulas that point at it (`INDIRECT`/`IMPORTRANGE` formulas are refused too).
+
 ## Security notes
 
 - CSP: `script-src 'self' 'sha256-…'` (hash of the page's inline script, computed at startup), `frame-ancestors 'none'`, `connect-src 'self'`, fonts only from Google Fonts.
   `style-src` needs `'unsafe-inline'`, because the page uses `style=""` attributes, including bar widths set at runtime, and those can't be hashed.
-- CSRF: cookies are `SameSite=Lax`, and `POST /api/tool` and `POST /auth/logout` require `Origin` to equal `APP_ORIGIN`.
+- CSRF: cookies are `SameSite=Lax`, and `POST /api/tool`, `POST /auth/logout` and the `/staff` forms require `Origin` to equal `APP_ORIGIN`.
 - Cookies use the `__Host-` prefix and `Secure` outside localhost.
-- Sessions last 7 days, then the person signs in again. Removing someone from the allow-list takes effect at their next sign-in. To cut everyone off at once, rotate `SESSION_SECRET`.
+- Sessions last 7 days, then the person signs in again. Removing an intern on `/staff` cuts them off straight away; removing staff from `ALLOWED_*` takes effect at their next request after a redeploy. To cut everyone off at once, rotate `SESSION_SECRET`.
 - Service-account tokens are cached in memory and refreshed before they expire. A 401 from Sheets drops the cached token and retries once.
 - Every write is made by the service account, so the sheet's version history shows the service account as the editor. Who did what is still recorded in the "Done by", "Reviewed by" and "Checked on" columns.
 - `/api/tool` checks the spreadsheet ID, tool name, input keys, `fields` mask, range length and value sizes before anything reaches Google.

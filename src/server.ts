@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import express, { type Request, type Response } from 'express';
+import { AccessList } from './access.js';
 import { INDEX_PATH, PUBLIC_DIR, loadConfig, type Config } from './config.js';
 import { authRouter } from './auth.js';
 import { ToolError } from './errors.js';
 import { RateLimiter } from './ratelimit.js';
 import { checkOrigin, inlineScriptHash, securityHeaders } from './security.js';
-import { getSession } from './session.js';
+import { clearSession, getSession, type Session } from './session.js';
+import { staffRouter } from './staff.js';
 import { runTool } from './tools.js';
 
 function sendError(cfg: Config, res: Response, err: unknown): void {
@@ -15,19 +17,32 @@ function sendError(cfg: Config, res: Response, err: unknown): void {
   res.status(e.status).json(e.toJSON());
 }
 
-export function createApp(cfg: Config) {
+export function createApp(cfg: Config, access = new AccessList(cfg)) {
   const html = readFileSync(INDEX_PATH, 'utf8');
   const limiter = new RateLimiter(cfg.searchesPerHour, 3600_000);
+
+  // A session plus a fresh check that the person is still allowed in, so removing an intern
+  // takes effect within the access list's cache time. Throws if the list can't be read.
+  async function signedIn(req: Request, res: Response): Promise<Session | null> {
+    const s = getSession(cfg, req);
+    if (!s) return null;
+    if (await access.role(s.email)) return s;
+    clearSession(cfg, res);
+    return null;
+  }
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
   app.use(securityHeaders(cfg, inlineScriptHash(html)));
 
   app.get('/healthz', (_req, res) => { res.type('text').send('ok'); });
-  app.use('/auth', authRouter(cfg));
+  app.use('/auth', authRouter(cfg, access));
+  app.use('/staff', staffRouter(cfg, access));
 
-  app.get(['/', '/index.html'], (req, res) => {
-    if (!getSession(cfg, req)) return res.redirect(302, '/auth/login');
+  app.get(['/', '/index.html'], async (req, res) => {
+    // If the list can't be read, still serve the page: it shows the sheet error itself.
+    const s = await signedIn(req, res).catch(() => getSession(cfg, req));
+    if (!s) return res.redirect(302, '/auth/login');
     res.setHeader('Cache-Control', 'no-store');
     res.type('html').send(html);
   });
@@ -36,20 +51,24 @@ export function createApp(cfg: Config) {
     res.sendFile('shim.js', { root: PUBLIC_DIR });
   });
 
-  app.get('/api/me', (req, res) => {
+  app.get('/api/me', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    const s = getSession(cfg, req);
-    if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
-    res.json({ name: s.name });
+    try {
+      const s = await signedIn(req, res);
+      if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
+      res.json({ name: s.name });
+    } catch (err) {
+      sendError(cfg, res, err);
+    }
   });
 
   app.post('/api/tool', express.json({ limit: '2mb' }), async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     if (!checkOrigin(cfg, req)) return sendError(cfg, res, new ToolError('blocked_by_policy', 'Cross-site request blocked', 403));
     if (!req.is('application/json')) return sendError(cfg, res, new ToolError('blocked_by_policy', 'Expected JSON', 415));
-    const s = getSession(cfg, req);
-    if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
     try {
+      const s = await signedIn(req, res);
+      if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
       res.json({ payload: await runTool(cfg, req.body, { email: s.email, limiter, sa: cfg.sa }) });
     } catch (err) {
       sendError(cfg, res, err);

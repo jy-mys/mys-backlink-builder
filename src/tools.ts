@@ -1,3 +1,4 @@
+import { ACCESS_TAB } from './access.js';
 import type { Config } from './config.js';
 import { ToolError } from './errors.js';
 import * as firecrawl from './firecrawl.js';
@@ -30,9 +31,18 @@ function onlyKeys(input: Record<string, unknown>, keys: string[], optional: stri
   for (const k of keys) if (!(k in input)) refuse(`Missing input field: ${k}`);
 }
 
+// The intern access list is managed on the /staff page only, never through the page's tool calls.
+const ACCESS_RE = new RegExp(ACCESS_TAB.replace(/\s+/g, '\\s*'), 'i');
+
 function range(v: unknown): string {
   if (typeof v !== 'string' || !v.length || v.length > 200 || /[\u0000-\u001f]/.test(v)) refuse('Invalid range');
+  if (ACCESS_RE.test(v.replace(/''/g, "'"))) refuse('That tab is not available');
   return v;
+}
+
+// Writes are USER_ENTERED, so a formula could otherwise read the access tab into a client tab.
+function formulaReachesAccess(c: string): boolean {
+  return /^\s*[=+-]/.test(c) && (ACCESS_RE.test(c) || /\b(INDIRECT|IMPORTRANGE)\s*\(/i.test(c));
 }
 
 function values(v: unknown): sheets.Cell[][] {
@@ -41,7 +51,10 @@ function values(v: unknown): sheets.Cell[][] {
     if (!Array.isArray(row) || row.length > MAX_COLS) refuse('Invalid values');
     return row.map((c) => {
       if (c === null || typeof c === 'number' || typeof c === 'boolean') return c;
-      if (typeof c === 'string' && c.length <= MAX_CELL) return c;
+      if (typeof c === 'string' && c.length <= MAX_CELL) {
+        if (formulaReachesAccess(c)) refuse('That formula is not allowed');
+        return c;
+      }
       refuse('Invalid cell value');
     });
   });
@@ -76,7 +89,9 @@ export async function runTool(cfg: Config, body: unknown, ctx: ToolContext): Pro
       onlyKeys(input, ['spreadsheetId', 'fields']);
       const f = input.fields;
       if (!Array.isArray(f) || f.length !== SPREADSHEET_FIELDS.length || !SPREADSHEET_FIELDS.every((x) => f.includes(x))) refuse('Invalid fields');
-      return sheets.getSpreadsheet(cfg, ctx.sa, SPREADSHEET_FIELDS);
+      const d = await sheets.getSpreadsheet(cfg, ctx.sa, SPREADSHEET_FIELDS);
+      if (Array.isArray(d.sheets)) d.sheets = d.sheets.filter((sh: any) => sh?.properties?.title !== ACCESS_TAB);
+      return d;
     }
     case 'firecrawl_search': {
       onlyKeys(input, ['query'], ['objective', 'limit']);

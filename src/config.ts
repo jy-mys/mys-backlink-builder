@@ -79,7 +79,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
 }
 
-export function isAllowed(cfg: Config, email: string): boolean {
+// Permanent staff. Interns are allowed separately, from the list staff keep (access.ts).
+export function isStaff(cfg: Config, email: string): boolean {
   const e = email.trim().toLowerCase();
   const domain = e.split('@')[1] || '';
   return cfg.allowedEmails.has(e) || (!!domain && cfg.allowedDomains.has(domain));

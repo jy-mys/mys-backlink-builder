@@ -2,8 +2,9 @@ import type { Config } from './config.js';
 import { ToolError, retryAfter } from './errors.js';
 import type { TokenSource } from './serviceaccount.js';
 
-// Thin client for the three Sheets REST v4 calls the page makes, authenticated as the
-// app's service account. A 401 drops the cached token and retries once.
+// Thin client for the three Sheets REST v4 calls the page makes (plus adding a tab, for the
+// intern access list), authenticated as the app's service account. A 401 drops the cached
+// token and retries once.
 
 export type Cell = string | number | boolean | null;
 
@@ -57,8 +58,9 @@ export async function getValues(cfg: Config, sa: TokenSource, range: string) {
   return { range: d.range ?? range, majorDimension: d.majorDimension ?? 'ROWS', values: Array.isArray(d.values) ? d.values : [] };
 }
 
-export async function updateValues(cfg: Config, sa: TokenSource, range: string, values: Cell[][]) {
-  return call(cfg, sa, 'PUT', base(cfg.sheetId) + '/values/' + encodeURIComponent(range), { valueInputOption: 'USER_ENTERED' }, {
+// RAW stores text exactly as given (no formulas); the page's own writes use USER_ENTERED.
+export async function updateValues(cfg: Config, sa: TokenSource, range: string, values: Cell[][], input: 'USER_ENTERED' | 'RAW' = 'USER_ENTERED') {
+  return call(cfg, sa, 'PUT', base(cfg.sheetId) + '/values/' + encodeURIComponent(range), { valueInputOption: input }, {
     range,
     majorDimension: 'ROWS',
     values,
@@ -67,4 +69,10 @@ export async function updateValues(cfg: Config, sa: TokenSource, range: string, 
 
 export async function getSpreadsheet(cfg: Config, sa: TokenSource, fields: string[]) {
   return call(cfg, sa, 'GET', base(cfg.sheetId), { fields: fields.join(',') });
+}
+
+export async function addSheet(cfg: Config, sa: TokenSource, title: string, hidden: boolean) {
+  return call(cfg, sa, 'POST', base(cfg.sheetId) + ':batchUpdate', {}, {
+    requests: [{ addSheet: { properties: { title, hidden } } }],
+  });
 }

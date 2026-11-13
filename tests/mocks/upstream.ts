@@ -63,6 +63,8 @@ export class Upstream {
   mode: Mode = { sheets: 'ok', saToken: 'ok', firecrawl: 'ok', loginEmail: 'intern@mysense.com.my' };
   validTokens = new Set<string>();
   issuedSaTokens: string[] = [];
+  valueInputs: string[] = [];
+  hidden = new Set<string>();
   authScopes: string[] = [];
   private keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   private server = http.createServer((req, res) => this.handle(req, res));
@@ -76,7 +78,7 @@ export class Upstream {
   close() { return new Promise((r) => this.server.close(r)); }
   reset() {
     this.store = buildStore();
-    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = [];
+    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = []; this.valueInputs = []; this.hidden = new Set();
     this.mode = { sheets: 'ok', saToken: 'ok', firecrawl: 'ok', loginEmail: 'intern@mysense.com.my' };
   }
 
@@ -129,6 +131,17 @@ export class Upstream {
     });
     this.writes.push({ range, values });
     return { spreadsheetId: SHEET_ID, updatedRange: range, updatedRows: values.length };
+  }
+  batchUpdate(b: { requests: { addSheet?: { properties: { title: string; hidden?: boolean } } }[] }) {
+    for (const r of b.requests) {
+      const p = r.addSheet?.properties;
+      if (!p) throw new SheetError(400, 'Only addSheet is mocked');
+      if (this.store.sheets.has(p.title)) throw new SheetError(400, `A sheet with the name "${p.title}" already exists.`);
+      this.store.sheets.set(p.title, []);
+      this.store.gids.set(p.title, 2000 + this.store.gids.size);
+      if (p.hidden) this.hidden.add(p.title);
+    }
+    return { replies: b.requests.map(() => ({ addSheet: {} })) };
   }
   getSpreadsheet() {
     return { sheets: [...this.store.gids].map(([title, sheetId]) => ({ properties: { title, sheetId } })) };
@@ -199,13 +212,19 @@ export class Upstream {
         if (!this.validTokens.has(token)) return json(401, { error: { code: 401, message: 'Request had invalid authentication credentials.', status: 'UNAUTHENTICATED' } });
         if (this.mode.sheets === 'forbidden') return json(403, { error: { code: 403, message: 'The caller does not have permission', status: 'PERMISSION_DENIED' } });
         if (this.mode.sheets === 'rate') return json(429, { error: { code: 429, message: 'Quota exceeded for quota metric \'Read requests\'', status: 'RESOURCE_EXHAUSTED' } }, { 'Retry-After': '1' });
+        const add = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+):batchUpdate$/);
+        if (add && req.method === 'POST') {
+          if (decodeURIComponent(add[1]) !== SHEET_ID) return json(404, { error: { code: 404, message: 'Requested entity was not found.' } });
+          return json(200, this.batchUpdate(JSON.parse(body)));
+        }
         const m = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)(?:\/values\/(.+))?$/);
         if (!m || decodeURIComponent(m[1]) !== SHEET_ID) return json(404, { error: { code: 404, message: 'Requested entity was not found.' } });
         if (!m[2]) return json(200, this.getSpreadsheet());
         const range = decodeURIComponent(m[2]);
         if (req.method === 'GET') return json(200, this.getValues(range));
         if (req.method === 'PUT') {
-          if (u.searchParams.get('valueInputOption') !== 'USER_ENTERED') return json(400, { error: { code: 400, message: 'valueInputOption required' } });
+          if (!['USER_ENTERED', 'RAW'].includes(u.searchParams.get('valueInputOption') || '')) return json(400, { error: { code: 400, message: 'valueInputOption required' } });
+          this.valueInputs.push(u.searchParams.get('valueInputOption')!);
           return json(200, this.updateValues(range, JSON.parse(body).values));
         }
       }

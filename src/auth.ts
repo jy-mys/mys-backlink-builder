@@ -1,24 +1,17 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { isAllowed, type Config } from './config.js';
+import type { AccessList } from './access.js';
+import type { Config } from './config.js';
+import { escapeHtml, page } from './html.js';
 import { clearOAuthState, clearSession, getOAuthState, setOAuthState, setSession } from './session.js';
 import { checkOrigin } from './security.js';
 
-// Google sign-in is for identity only: who you are, checked against the allow-list.
+// Google sign-in is for identity only: who you are, checked against staff domains and the intern list.
 // Sheets access goes through the app's service account (see serviceaccount.ts).
 export const SCOPES = 'openid email profile';
 
 function redirectUri(cfg: Config): string {
   return cfg.appOrigin + '/auth/callback';
-}
-
-function page(res: Response, status: number, title: string, body: string): void {
-  res.status(status).type('html').send(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${title}</title><style>body{font:15px/1.5 system-ui,sans-serif;max-width:520px;margin:64px auto;padding:0 16px;color:#1d2228;background:#f6f6f4}` +
-    `a,button{color:#2b63c9}button{font:inherit;background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}</style></head>` +
-    `<body><h1 style="font-size:20px">${title}</h1>${body}</body></html>`,
-  );
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
@@ -28,7 +21,7 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
 }
 
-export function authRouter(cfg: Config): Router {
+export function authRouter(cfg: Config, access: AccessList): Router {
   const r = Router();
 
   r.get('/login', (_req, res) => {
@@ -79,8 +72,17 @@ export function authRouter(cfg: Config): Router {
     if (!t.ok || !t.body.id_token) return page(res, 400, 'Sign-in failed', `<p>Google didn't accept the sign-in.</p>${again}`);
     const claims = decodeJwtPayload(t.body.id_token);
     const email = String(claims.email || '');
-    if (claims.aud !== cfg.googleClientId || !email || claims.email_verified !== true || !isAllowed(cfg, email)) {
-      return page(res, 403, 'Account not allowed', `<p>${escapeHtml(email || 'This account')} isn't on the list for the Backlink Builder. Ask a lead to add you.</p>${again}`);
+    if (claims.aud !== cfg.googleClientId || !email || claims.email_verified !== true) {
+      return page(res, 400, 'Sign-in failed', `<p>Google didn't confirm this account's email address.</p>${again}`);
+    }
+    let role;
+    try {
+      role = await access.role(email);
+    } catch {
+      return page(res, 503, 'Try again', `<p>Couldn't check the access list just now. Try again in a moment.</p>${again}`);
+    }
+    if (!role) {
+      return page(res, 403, 'Account not allowed', `<p>${escapeHtml(email)} isn't on the list for the Backlink Builder. Staff sign in with their @mysense.com.my account; interns need a lead to add their Gmail address.</p>${again}`);
     }
     setSession(cfg, res, { email, name: String(claims.name || claims.given_name || email.split('@')[0]), iat: Date.now() });
     res.redirect(302, '/');
@@ -97,8 +99,4 @@ export function authRouter(cfg: Config): Router {
   });
 
   return r;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
