@@ -1,0 +1,33 @@
+# Render blueprint (https://render.com/docs/blueprint-spec). Render reads this when you create
+# the service from the GitHub repo, and redeploys on every push to main.
+# Secrets are NOT stored here: values marked sync: false are typed into the Render dashboard,
+# and the sheet's service account key is added there as the Secret File "sa-key.json".
+services:
+  - type: web
+    name: mys-backlink-builder
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: SHEET_ID
+        value: 1KcJjTGJpxOQVsfkdMFpZ6sIfEWGWtMj0kcm8eWyLkZ0
+      - key: ALLOWED_DOMAINS
+        value: mysense.com.my
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/sa-key.json
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      # APP_ORIGIN can be left unset: the app falls back to RENDER_EXTERNAL_URL, which Render sets.

@@ -45,7 +45,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('SHEET_ID does not match the spreadsheet ID embedded in public/index.html');
   }
 
-  const appOrigin = new URL(required(env, 'APP_ORIGIN')).origin;
+  // On Render, RENDER_EXTERNAL_URL (e.g. https://name.onrender.com) is set for us.
+  const appOrigin = new URL((env.RENDER_EXTERNAL_URL || '').trim() && !(env.APP_ORIGIN || '').trim()
+    ? env.RENDER_EXTERNAL_URL!.trim() : required(env, 'APP_ORIGIN')).origin;
   const sessionSecret = required(env, 'SESSION_SECRET');
   if (sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
 
