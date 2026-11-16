@@ -15,6 +15,8 @@ with this server:
 | `POST /api/tool` | The page's tool calls. Only `get_values`, `update_values`, `get_spreadsheet` on the Backlink Tracker sheet, and `firecrawl_search`. Everything else is refused. |
 | `GET /staff` | Staff only: add and remove interns' Gmail addresses (see "Who can sign in"). |
 | `GET /links`, `POST /links/crawl` | Live link check: crawl a client's Live rows and record whether each page still links to the client's site (see "Live link check"). |
+| `POST /links/competitors` | Staff only: bulk competitor check of a client's in-scope sites via Tavily (see "Bulk competitor check"). |
+| `POST /api/cron/competitors` | Monthly bulk competitor check of every client, called by GitHub Actions with `CRON_SECRET`. |
 | `POST /api/cron/linkcheck` | Weekly crawl of every client, called by GitHub Actions with `CRON_SECRET`. |
 | `GET /privacy` | Public privacy notice, linked from the Google consent screen. |
 | `GET /healthz` | Liveness check. |
@@ -98,10 +100,11 @@ See `.env.example`.
 | `GOOGLE_APPLICATION_CREDENTIALS` | no | Path to a service account JSON key, for running outside Cloud Run. Not used in the company project (key creation is blocked); leave unset. |
 | `FIRECRAWL_API_KEY` | no | Without it, the Check panel shows its "use the Google links" fallback. |
 | `SEARCHES_PER_HOUR` | no | Per-person Firecrawl limit, default 30. |
+| `TAVILY_API_KEY` | no | Turns on the bulk competitor check. Free plan at tavily.com, 1,000 searches a month, no card. |
 | `CRON_SECRET` | no | 32+ characters. Turns on `POST /api/cron/linkcheck` for the weekly crawl. Render generates it; copy it into the GitHub repository secret of the same name. |
 | `PORT` | no | Default 8080. Cloud Run sets it. |
 
-`CRAWL_ALLOW_PRIVATE`, `GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `GCE_METADATA_HOST`, `SHEETS_API_BASE` and `FIRECRAWL_API_BASE` exist only so the tests can point at local mocks. Don't set them in production.
+`CRAWL_ALLOW_PRIVATE`, `TAVILY_API_BASE`, `GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `GCE_METADATA_HOST`, `SHEETS_API_BASE` and `FIRECRAWL_API_BASE` exist only so the tests can point at local mocks. Don't set them in production.
 
 ## 3. Run locally
 
@@ -217,6 +220,19 @@ range, on every redirect, so a URL in the sheet can't reach internal services. O
 **Weekly:** `.github/workflows/weekly-link-check.yml` calls `POST /api/cron/linkcheck` every Monday 09:00 Malaysia time.
 Set up once: in Render, copy the generated `CRON_SECRET`; in GitHub, **Settings → Secrets and variables → Actions → New
 repository secret**, name `CRON_SECRET`, paste. Test it from the **Actions** tab with **Run workflow**.
+
+## Bulk competitor check
+
+On the same `/links` page, staff can click **Check competitors on all of … 's sites**. For every in-scope site on the
+client's tab it makes one [Tavily](https://tavily.com) search limited to that site's domain, for the competitors in
+cell M1, and writes **Competitors found / Checked on / Evidence** (O–Q): the same columns the main page's Check uses,
+so results show there. Earlier finds (often a person's manual check) are kept; new ones are added. Sites checked in the
+last 7 days are skipped. It costs about one search per site (MYSense: ~25), and Tavily's free plan allows 1,000 a month.
+When they run out, the check stops and says so; nothing is charged.
+
+`.github/workflows/monthly-competitor-check.yml` runs it for every client on the 1st of each month (same `CRON_SECRET`).
+Staff only, to keep within the free searches. Search engines don't see every listing, so "None found" means "not found
+by search".
 
 ## Who can sign in
 

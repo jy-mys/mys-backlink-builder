@@ -20,6 +20,7 @@ export interface Config {
   firecrawlKey: string;
   searchesPerHour: number;
   cronSecret: string;
+  tavilyKey: string;
   // Tests only: lets the link crawler fetch the local mock sites.
   crawlAllowPrivate: boolean;
   // Upstream base URLs. Only the tests override these, to point at local mocks.
@@ -27,6 +28,7 @@ export interface Config {
   googleTokenUrl: string;
   sheetsBase: string;
   firecrawlBase: string;
+  tavilyBase: string;
 }
 
 function list(v: string | undefined): Set<string> {
@@ -84,11 +86,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     firecrawlKey: (env.FIRECRAWL_API_KEY || '').trim(),
     searchesPerHour: Math.max(1, parseInt(env.SEARCHES_PER_HOUR || '30', 10) || 30),
     cronSecret: cronSecret(env),
+    tavilyKey: (env.TAVILY_API_KEY || '').trim(),
     crawlAllowPrivate: env.CRAWL_ALLOW_PRIVATE === '1',
     googleAuthUrl: env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
     googleTokenUrl: env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
     sheetsBase: (env.SHEETS_API_BASE || 'https://sheets.googleapis.com').replace(/\/$/, ''),
     firecrawlBase: (env.FIRECRAWL_API_BASE || 'https://api.firecrawl.dev').replace(/\/$/, ''),
+    tavilyBase: (env.TAVILY_API_BASE || 'https://api.tavily.com').replace(/\/$/, ''),
   };
 }
 

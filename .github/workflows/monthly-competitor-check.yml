@@ -1,0 +1,24 @@
+# On the 1st of every month, 10:00 Malaysia time, run the bulk competitor check for every client
+# (Tavily free plan: 1,000 searches a month). Needs the repository secret CRON_SECRET.
+# Run it by hand from the Actions tab with "Run workflow".
+name: Monthly competitor check
+on:
+  schedule:
+    - cron: '0 2 1 * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check competitors on every client's sites
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://mys-backlink-builder.onrender.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::error::Add the CRON_SECRET repository secret first."; exit 1; fi
+          # Wake the free Render service first, so the long request doesn't start on a sleeping server.
+          curl -sS -o /dev/null --max-time 120 --retry 4 --retry-delay 30 --retry-all-errors "$APP_URL/healthz"
+          curl -sS --fail-with-body --max-time 3000 \
+            -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/competitors"

@@ -66,6 +66,8 @@ export class Upstream {
   valueInputs: string[] = [];
   hidden = new Set<string>();
   appendedColumns: { sheetId: number; length: number }[] = [];
+  tavily: { auth: string; body: any }[] = [];
+  tavilyMode: 'ok' | 'quota' | 'quotaAfter2' = 'ok';
   authScopes: string[] = [];
   private keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   private server = http.createServer((req, res) => this.handle(req, res));
@@ -79,7 +81,7 @@ export class Upstream {
   close() { return new Promise((r) => this.server.close(r)); }
   reset() {
     this.store = buildStore();
-    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = []; this.valueInputs = []; this.hidden = new Set(); this.appendedColumns = [];
+    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = []; this.valueInputs = []; this.hidden = new Set(); this.appendedColumns = []; this.tavily = []; this.tavilyMode = 'ok';
     this.mode = { sheets: 'ok', saToken: 'ok', firecrawl: 'ok', loginEmail: 'intern@mysense.com.my' };
   }
 
@@ -239,6 +241,14 @@ export class Upstream {
         }
       }
 
+      if (u.pathname === '/tavily/search') {
+        const b = JSON.parse(body);
+        this.tavily.push({ auth: String(req.headers.authorization || ''), body: b });
+        if (this.tavilyMode === 'quota' || (this.tavilyMode === 'quotaAfter2' && this.tavily.length > 2)) return json(432, { detail: { error: 'This request exceeds your plan\'s set usage limit.' } });
+        const host = b.include_domains?.[0] || 'example.com';
+        const web = this.search('site:' + host).data.web;
+        return json(200, { query: b.query, results: web.map((w) => ({ url: w.url, title: w.title, content: w.description, score: 0.9 })) });
+      }
       if (u.pathname === '/v2/search') {
         const b = JSON.parse(body);
         this.searches.push({ auth: String(req.headers.authorization || ''), body: b });

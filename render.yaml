@@ -33,4 +33,7 @@ services:
         sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
+      # Bulk competitor check (free plan at tavily.com: 1,000 searches a month).
+      - key: TAVILY_API_KEY
+        sync: false
       # APP_ORIGIN can be left unset: the app falls back to RENDER_EXTERNAL_URL, which Render sets.

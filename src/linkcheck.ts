@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import express, { Router, type Request, type Response } from 'express';
 import type { AccessList } from './access.js';
-import type { Config } from './config.js';
+import { checkCompetitors, type CompSummary } from './compcheck.js';
+import { isStaff, type Config } from './config.js';
 import { bareHost, bestRel, fetchPage, findLinks } from './crawl.js';
 import { escapeHtml, page } from './html.js';
 import { checkOrigin } from './security.js';
@@ -105,16 +106,28 @@ export function linksRouter(cfg: Config, access: AccessList): Router {
   const r = Router();
   r.use(express.urlencoded({ extended: false, limit: '10kb' }));
 
-  async function who(req: Request, res: Response): Promise<boolean> {
+  // The signed-in person's email, or null after sending a redirect / error page.
+  async function who(req: Request, res: Response): Promise<string | null> {
     const s = getSession(cfg, req);
-    if (!s) { res.redirect(302, '/auth/login'); return false; }
+    if (!s) { res.redirect(302, '/auth/login'); return null; }
     let role = null;
-    try { role = await access.role(s.email); } catch { page(res, 503, 'Try again', "<p>Couldn't check your access just now. Reload in a moment.</p>"); return false; }
-    if (!role) { res.redirect(302, '/auth/login'); return false; }
-    return true;
+    try { role = await access.role(s.email); } catch { page(res, 503, 'Try again', "<p>Couldn't check your access just now. Reload in a moment.</p>"); return null; }
+    if (!role) { res.redirect(302, '/auth/login'); return null; }
+    return s.email;
   }
 
-  async function render(res: Response, status: number, tab: string, tabs: string[], note = '', err = false) {
+  function compForm(tab: string, staff: boolean): string {
+    const head = '<h2 style="font-size:16px;margin-top:32px">Competitor check, all sites</h2>' +
+      `<p>Searches each in-scope site on ${escapeHtml(tab)}'s tab for the competitors in cell M1, using Tavily's free plan ` +
+      '(1,000 searches a month, about one per site). Results go into Competitors found, Checked on and Evidence (O–Q), the same ' +
+      'columns as the Check button on the main page. Sites checked in the last 7 days are skipped, and earlier finds are kept. It also runs by itself on the 1st of each month.</p>';
+    if (!cfg.tavilyKey) return head + '<p class="note">Off: add TAVILY_API_KEY in Render to turn it on.</p>';
+    if (!staff) return head + '<p class="note">Staff can run this, to keep within the free monthly searches.</p>';
+    return head + `<form method="post" action="/links/competitors" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
+      `<button type="submit" class="primary">Check competitors on all of ${escapeHtml(tab)}'s sites</button> <span class="note">Takes a minute or two.</span></form>`;
+  }
+
+  async function render(res: Response, status: number, tab: string, tabs: string[], note = '', err = false, staff = false) {
     let body = '';
     if (tab) {
       try {
@@ -142,45 +155,104 @@ export function linksRouter(cfg: Config, access: AccessList): Router {
       `</select></div><div><button type="submit">Show</button></div></form>` +
       (tab ? `<form method="post" action="/links/crawl" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
         `<button type="submit" class="primary">Crawl ${escapeHtml(tab)}'s live links now</button> <span class="note">Takes up to a minute.</span></form>` : '') +
-      body + `<p style="margin-top:32px"><a href="/">Back to the Backlink Builder</a></p>`, true);
+      body + (tab ? compForm(tab, staff) : '') + `<p style="margin-top:32px"><a href="/">Back to the Backlink Builder</a></p>`, true);
   }
 
   r.get('/', async (req, res) => {
-    if (!(await who(req, res))) return;
+    const email = await who(req, res);
+    if (!email) return;
     let tabs: string[] = [];
     try { tabs = await clientTabs(cfg); } catch { return page(res, 502, 'Live link check', "<p>Couldn't read the client list from the sheet. Try again in a moment.</p>"); }
     const want = String(req.query.tab || '');
-    await render(res, 200, tabs.includes(want) ? want : tabs[0] || '', tabs);
+    await render(res, 200, tabs.includes(want) ? want : tabs[0] || '', tabs, '', false, isStaff(cfg, email));
   });
 
   r.post('/crawl', async (req, res) => {
     if (!checkOrigin(cfg, req)) return page(res, 403, 'Not allowed', '<p>Cross-site request blocked.</p>');
-    if (!(await who(req, res))) return;
+    const email = await who(req, res);
+    if (!email) return;
+    const staff = isStaff(cfg, email);
     let tabs: string[] = [];
     try { tabs = await clientTabs(cfg); } catch { return page(res, 502, 'Live link check', "<p>Couldn't read the client list from the sheet. Try again in a moment.</p>"); }
     const tab = String(req.body?.tab || '');
-    if (!tabs.includes(tab)) return render(res, 400, tabs[0] || '', tabs, 'Pick a client from the list.', true);
+    if (!tabs.includes(tab)) return render(res, 400, tabs[0] || '', tabs, 'Pick a client from the list.', true, staff);
     try {
       const s = await crawlOnce(cfg, tab);
       const msg = s.message || (s.checked ? `Checked ${s.checked} live link${s.checked === 1 ? '' : 's'}: ${s.ok} OK, ${s.problems} need a look.` : 'No sites are marked Live yet, so there was nothing to crawl.');
-      await render(res, 200, tab, tabs, msg, !!s.message);
+      await render(res, 200, tab, tabs, msg, !!s.message, staff);
     } catch {
-      await render(res, 502, tab, tabs, "The crawl couldn't save to the sheet. Nothing may have changed; try again.", true);
+      await render(res, 502, tab, tabs, "The crawl couldn't save to the sheet. Nothing may have changed; try again.", true, staff);
+    }
+  });
+
+  r.post('/competitors', async (req, res) => {
+    if (!checkOrigin(cfg, req)) return page(res, 403, 'Not allowed', '<p>Cross-site request blocked.</p>');
+    const email = await who(req, res);
+    if (!email) return;
+    if (!isStaff(cfg, email)) return page(res, 403, 'Staff only', '<p>Only staff can run the bulk competitor check.</p><p><a href="/links">Back</a></p>');
+    let tabs: string[] = [];
+    try { tabs = await clientTabs(cfg); } catch { return page(res, 502, 'Live link check', "<p>Couldn't read the client list from the sheet. Try again in a moment.</p>"); }
+    const tab = String(req.body?.tab || '');
+    if (!tabs.includes(tab)) return render(res, 400, tabs[0] || '', tabs, 'Pick a client from the list.', true, true);
+    if (!cfg.tavilyKey) return render(res, 503, tab, tabs, 'The competitor check is off: add TAVILY_API_KEY in Render.', true, true);
+    try {
+      const s = await compOnce(cfg, tab);
+      await render(res, 200, tab, tabs, compMessage(s), !!(s.message || s.stoppedEarly), true);
+    } catch {
+      await render(res, 502, tab, tabs, "The competitor check couldn't save to the sheet. Try again.", true, true);
     }
   });
   return r;
+}
+
+export function compMessage(s: CompSummary): string {
+  if (s.message) return s.message;
+  const done = s.searched
+    ? `Searched ${s.searched} site${s.searched === 1 ? '' : 's'}: competitors found on ${s.withHits}. Open the main page to see them in each site's Check.`
+    : 'Nothing to search.';
+  const skipped = s.skipped ? ` ${s.skipped} site${s.skipped === 1 ? ' was' : 's were'} checked in the last 7 days and skipped.` : '';
+  return done + skipped + (s.stoppedEarly ? ' Stopped early: ' + s.stoppedEarly : '');
+}
+
+const compRunning = new Set<string>();
+async function compOnce(cfg: Config, tab: string): Promise<CompSummary> {
+  if (compRunning.has(tab)) return { tab, searched: 0, skipped: 0, withHits: 0, message: 'A competitor check of this client is already running. Wait a minute and reload.' };
+  compRunning.add(tab);
+  try { return await checkCompetitors(cfg, tab); } finally { compRunning.delete(tab); }
 }
 
 // POST /api/cron/linkcheck with "Authorization: Bearer <CRON_SECRET>": crawl every client.
 // Called weekly by .github/workflows/weekly-link-check.yml. Off unless CRON_SECRET is set.
 export function cronRouter(cfg: Config): Router {
   const r = Router();
-  r.post('/linkcheck', async (req, res) => {
+  const authorised = (req: Request, res: Response): boolean => {
     res.setHeader('Cache-Control', 'no-store');
-    if (!cfg.cronSecret) return res.status(404).json({ error: 'not configured' });
+    if (!cfg.cronSecret) { res.status(404).json({ error: 'not configured' }); return false; }
     const got = Buffer.from(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
     const want = Buffer.from(cfg.cronSecret);
-    if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return res.status(401).json({ error: 'unauthorized' });
+    if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) { res.status(401).json({ error: 'unauthorized' }); return false; }
+    return true;
+  };
+  // Monthly: bulk competitor check of every client. Stops at the first client that hits the quota.
+  r.post('/competitors', async (req, res) => {
+    if (!authorised(req, res)) return;
+    if (!cfg.tavilyKey) return res.status(503).json({ error: 'TAVILY_API_KEY is not set' });
+    try {
+      const out = [];
+      for (const tab of await clientTabs(cfg)) {
+        try {
+          const s = await compOnce(cfg, tab);
+          out.push({ tab, searched: s.searched, skipped: s.skipped, withHits: s.withHits, message: s.message, stoppedEarly: s.stoppedEarly });
+          if (s.stoppedEarly) break;
+        } catch (e) { out.push({ tab, error: (e as Error).message }); }
+      }
+      res.json({ clients: out });
+    } catch (e) {
+      res.status(502).json({ error: (e as Error).message });
+    }
+  });
+  r.post('/linkcheck', async (req, res) => {
+    if (!authorised(req, res)) return;
     try {
       const out = [];
       for (const tab of await clientTabs(cfg)) {
