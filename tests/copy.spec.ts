@@ -18,6 +18,11 @@ const REWORDED: [string, string][] = [
     "Google Sheets isn\\'t allowed for this app. Ask an admin to check the setup, then click Retry."],
   ["Live progress isn\\'t available in this view. Open the page from claude.ai to load clients from the sheet.",
     "You\\'re not signed in. Reload the page to sign in with Google and load clients from the sheet."],
+  // An "In progress" status, between Not started and Submitted, with an amber style.
+  ["  var ST = [['none','Not started'],['sub','Submitted'],",
+    "  var ST = [['none','Not started'],['prog','In progress'],['sub','Submitted'],"],
+  ['.stsel.st-sub{',
+    '.stsel.st-prog{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}\n.stsel.st-sub{'],
   // Sheets is accessed by the app's service account now, not the person's own Google account.
   ['Check you can open the Backlink Tracker sheet with this Google account.',
     'Check the Backlink Tracker sheet is shared with this app.'],

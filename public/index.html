@@ -171,6 +171,7 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
 .p-amber{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
 .p-teal{color:var(--teal);background:var(--teal-soft);border-color:var(--teal-line)}
 .stsel{font-size:12.5px;font-weight:500;border:1px solid var(--line);border-radius:6px;padding:5px 6px;background:var(--surface);min-height:32px}
+.stsel.st-prog{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
 .stsel.st-sub{border-color:var(--cblue-line);background:var(--cblue-soft);color:var(--cblue)}
 .stsel.st-live{border-color:var(--teal-line);background:var(--teal-soft);color:var(--teal)}
 .stsel:disabled{opacity:.6;cursor:not-allowed}
@@ -402,7 +403,7 @@ a.btn.ink{color:var(--ink-btn-fg)}
     avoid:{l:'Avoid',h:'Spam patterns. Never build these.'}
   };
   var WHO_ORDER = ['intern','client','qualify','manager','avoid'];
-  var ST = [['none','Not started'],['sub','Submitted'],['live','Live'],['rej','Rejected'],['na','Not applicable']];
+  var ST = [['none','Not started'],['prog','In progress'],['sub','Submitted'],['live','Live'],['rej','Rejected'],['na','Not applicable']];
   var ST_LABEL = {}; var ST_CODE = {};
   ST.forEach(function(p){ ST_LABEL[p[0]] = p[1]; ST_CODE[p[1].toLowerCase()] = p[0]; });
   var LINKS = ['', 'Dofollow', 'Nofollow', 'Sponsored', 'UGC', 'Citation (no link)'];

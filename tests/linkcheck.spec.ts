@@ -151,3 +151,18 @@ test('everyone signed in gets a Check live links button for the chosen client', 
   await expect(page.locator('h1')).toHaveText('Live link check');
   await ctx.close();
 });
+
+test('a row marked "In progress" in the sheet shows as In progress in the app', async ({ browser }) => {
+  tab()[5][8] = 'In progress';
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: 'mbb', value: sessionCookie(st, { email: STAFF, name: 'Lead' }), url: st.appUrl }]);
+  const page = await ctx.newPage();
+  await page.goto(st.appUrl);
+  await page.waitForFunction(() => !!document.querySelector('#clientSel option[value="MYSense"]'));
+  await page.selectOption('#clientSel', 'MYSense');
+  await page.waitForFunction(() => /Connected to the Backlink Tracker sheet/.test(document.getElementById('sheetBar')!.textContent || ''));
+  const sel = page.locator('select.stsel.st-prog');
+  await expect(sel.first()).toHaveValue('prog');
+  await expect(sel.first().locator('option:checked')).toHaveText('In progress');
+  await ctx.close();
+});
