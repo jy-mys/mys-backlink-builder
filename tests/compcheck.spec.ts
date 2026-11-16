@@ -7,7 +7,7 @@ import { startStack, sessionCookie, CRON_SECRET, TAVILY_KEY, type Stack } from '
 let st: Stack;
 test.beforeAll(async () => { st = await startStack(); });
 test.afterAll(async () => { await st.close(); });
-test.beforeEach(() => st.upstream.reset());
+test.beforeEach(async () => { st.upstream.reset(); (await import('../src/compcheck.js')).forgetUsage(); });
 
 const STAFF = 'lead@mysense.com.my';
 const INTERN = 'aina.intern@gmail.com';
@@ -117,4 +117,31 @@ test('earlier automatic results are replaced; a person\'s finds and #REF! are ha
   expect(g[5][14]).toBe('Locus-T, Primal Malaysia');
   expect(g[6][14]).toBe('Locus-T, Primal Malaysia'); // row 7 had a person's find (Locus-T), kept with its evidence
   expect(g[6][16]).toContain('Locus-T: https://example.com/locus');
+});
+
+async function view(email = STAFF) {
+  const ctx = await pwRequest.newContext();
+  const t = await (await ctx.get(st.appUrl + '/links?tab=MYSense', { headers: { Cookie: cookie(email) } })).text();
+  await ctx.dispose();
+  return t;
+}
+
+test('the page shows this month\'s searches and what a check will cost', async () => {
+  const sites = tab().slice(4).filter((x) => x[0]).length;
+  const before = await view();
+  expect(before).toContain('<b>Searches this month:</b> 0 used of 1,000, <b>1,000 left</b> (Tavily Researcher plan).');
+  expect(before).toContain(`A check of MYSense now would use about <b>${sites}</b> searches.`);
+  expect(before).toContain('This crawl is free and has no quota.');
+  await run('MYSense');
+  const after = await view();
+  expect(after).toContain(`<b>Searches this month:</b> ${sites} used of 1,000, <b>${1000 - sites} left</b>`);
+  // Everything was just checked, so another run now would search nothing.
+  expect(after).toContain(`would use about <b>0</b> searches (${sites} sites checked in the last 7 days are skipped)`);
+});
+
+test('a check that would not fit in the searches left is refused before searching', async () => {
+  st.upstream.tavilyUsedBefore = 995;
+  const r = await run('MYSense');
+  expect(r.text).toMatch(/This check needs about \d+ searches but only 5 of this month&#39;s 1,000 are left\. Nothing was searched\./);
+  expect(st.upstream.tavily).toEqual([]);
 });

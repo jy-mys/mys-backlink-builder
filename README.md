@@ -229,7 +229,9 @@ cell M1, and writes **Competitors found / Checked on / Evidence** (O–Q): the s
 so results show there. A person's earlier finds are kept and new ones added; earlier automatic results are replaced, so a
 wrong match doesn't stick. Names must match in full ("Primal Malaysia", not just "Primal"), or the competitor's domain. Sites checked in the
 last 7 days are skipped. It costs about one search per site (MYSense: ~25), and Tavily's free plan allows 1,000 a month.
-When they run out, the check stops and says so; nothing is charged.
+The page shows this month's searches used and left (from Tavily's `/usage`) and about how many a
+check of the chosen client would use; a check that wouldn't fit in what's left is refused before searching. If the
+searches run out mid-check, it stops and says so; nothing is charged. The live-link crawl is free and has no quota.
 
 `.github/workflows/monthly-competitor-check.yml` runs it for every client on the 1st of each month (same `CRON_SECRET`).
 Staff only, to keep within the free searches. Search engines don't see every listing, so "None found" means "not found

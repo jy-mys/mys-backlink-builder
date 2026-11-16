@@ -68,6 +68,7 @@ export class Upstream {
   appendedColumns: { sheetId: number; length: number }[] = [];
   tavily: { auth: string; body: any }[] = [];
   tavilyMode: 'ok' | 'quota' | 'quotaAfter2' = 'ok';
+  tavilyUsedBefore = 0;
   authScopes: string[] = [];
   private keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   private server = http.createServer((req, res) => this.handle(req, res));
@@ -81,7 +82,7 @@ export class Upstream {
   close() { return new Promise((r) => this.server.close(r)); }
   reset() {
     this.store = buildStore();
-    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = []; this.valueInputs = []; this.hidden = new Set(); this.appendedColumns = []; this.tavily = []; this.tavilyMode = 'ok';
+    this.writes = []; this.searches = []; this.sheetsRequests = []; this.authScopes = []; this.valueInputs = []; this.hidden = new Set(); this.appendedColumns = []; this.tavily = []; this.tavilyMode = 'ok'; this.tavilyUsedBefore = 0;
     this.mode = { sheets: 'ok', saToken: 'ok', firecrawl: 'ok', loginEmail: 'intern@mysense.com.my' };
   }
 
@@ -241,6 +242,11 @@ export class Upstream {
         }
       }
 
+      if (u.pathname === '/tavily/usage') {
+        if (String(req.headers.authorization || '') !== 'Bearer tvly-test-key-123') return json(401, { detail: { error: 'Unauthorized: missing or invalid API key.' } });
+        const used = this.tavilyUsedBefore + this.tavily.length;
+        return json(200, { key: { usage: used, limit: null, search_usage: used }, account: { current_plan: 'Researcher', plan_usage: used, plan_limit: 1000, paygo_usage: 0, paygo_limit: 0, search_usage: used } });
+      }
       if (u.pathname === '/tavily/search') {
         const b = JSON.parse(body);
         this.tavily.push({ auth: String(req.headers.authorization || ''), body: b });

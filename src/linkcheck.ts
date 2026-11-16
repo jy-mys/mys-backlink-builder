@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import express, { Router, type Request, type Response } from 'express';
 import type { AccessList } from './access.js';
-import { checkCompetitors, type CompSummary } from './compcheck.js';
+import { checkCompetitors, planCheck, tavilyUsage, type CompSummary } from './compcheck.js';
 import { isStaff, type Config } from './config.js';
 import { bareHost, bestRel, fetchPage, findLinks } from './crawl.js';
 import { escapeHtml, page } from './html.js';
@@ -116,14 +116,29 @@ export function linksRouter(cfg: Config, access: AccessList): Router {
     return s.email;
   }
 
-  function compForm(tab: string, staff: boolean): string {
+  async function quotaHtml(tab: string): Promise<string> {
+    let line = '';
+    try {
+      const q = await tavilyUsage(cfg);
+      if (q) line = `<b>Searches this month:</b> ${q.used.toLocaleString('en')} used of ${q.limit.toLocaleString('en')}, <b>${q.left.toLocaleString('en')} left</b>` +
+        (q.plan ? ` (Tavily ${escapeHtml(q.plan)} plan)` : '') + '.';
+    } catch { line = "Couldn't read this month's search quota from Tavily just now."; }
+    try {
+      const p = await planCheck(cfg, tab);
+      if (!p.message) line += ` A check of ${escapeHtml(tab)} now would use about <b>${p.rows.length}</b> search${p.rows.length === 1 ? '' : 'es'}` +
+        (p.skipped ? ` (${p.skipped} site${p.skipped === 1 ? '' : 's'} checked in the last 7 days are skipped)` : '') + '.';
+    } catch { /* the table above already reports sheet errors */ }
+    return line ? `<p class="msg" style="background:#eef2f8">${line}</p>` : '';
+  }
+
+  function compForm(tab: string, staff: boolean, quota = ''): string {
     const head = '<h2 style="font-size:16px;margin-top:32px">Competitor check, all sites</h2>' +
       `<p>Searches each in-scope site on ${escapeHtml(tab)}'s tab for the competitors in cell M1, using Tavily's free plan ` +
       '(1,000 searches a month, about one per site). Results go into Competitors found, Checked on and Evidence (O–Q), the same ' +
       'columns as the Check button on the main page. Sites checked in the last 7 days are skipped, and earlier finds are kept. It also runs by itself on the 1st of each month.</p>';
     if (!cfg.tavilyKey) return head + '<p class="note">Off: add TAVILY_API_KEY in Render to turn it on.</p>';
-    if (!staff) return head + '<p class="note">Staff can run this, to keep within the free monthly searches.</p>';
-    return head + `<form method="post" action="/links/competitors" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
+    if (!staff) return head + quota + '<p class="note">Staff can run this, to keep within the free monthly searches.</p>';
+    return head + quota + `<form method="post" action="/links/competitors" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
       `<button type="submit" class="primary">Check competitors on all of ${escapeHtml(tab)}'s sites</button> <span class="note">Takes a minute or two.</span></form>`;
   }
 
@@ -148,14 +163,15 @@ export function linksRouter(cfg: Config, access: AccessList): Router {
     page(res, status, 'Live link check',
       (note ? `<p class="msg${err ? ' err' : ''}">${escapeHtml(note)}</p>` : '') +
       `<p>Opens every site marked <b>Live</b> on a client's tab and checks the page still links to the client's website. ` +
-      `Results go into the client's tab: <b>Link checked</b> (column K), <b>Crawl result</b> (R) and <b>Crawled on</b> (S). It also runs by itself every week.</p>` +
+      `Results go into the client's tab: <b>Link checked</b> (column K), <b>Crawl result</b> (R) and <b>Crawled on</b> (S). It also runs by itself every week. ` +
+      `This crawl is free and has no quota.</p>` +
       `<form method="get" action="/links" class="add" style="grid-template-columns:1fr auto"><div><label for="tab">Client</label>` +
       `<select id="tab" name="tab" style="font:inherit;padding:6px 8px;border:1px solid #bbb;border-radius:6px;width:100%">` +
       tabs.map((t) => `<option value="${escapeHtml(t)}"${t === tab ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('') +
       `</select></div><div><button type="submit">Show</button></div></form>` +
       (tab ? `<form method="post" action="/links/crawl" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
         `<button type="submit" class="primary">Crawl ${escapeHtml(tab)}'s live links now</button> <span class="note">Takes up to a minute.</span></form>` : '') +
-      body + (tab ? compForm(tab, staff) : '') + `<p style="margin-top:32px"><a href="/">Back to the Backlink Builder</a></p>`, true);
+      body + (tab ? compForm(tab, staff, cfg.tavilyKey ? await quotaHtml(tab) : '') : '') + `<p style="margin-top:32px"><a href="/">Back to the Backlink Builder</a></p>`, true);
   }
 
   r.get('/', async (req, res) => {

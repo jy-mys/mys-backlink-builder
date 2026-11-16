@@ -64,13 +64,33 @@ export async function tavilySearch(cfg: Config, query: string, host: string): Pr
 
 export const AUTO = 'auto check';
 
-export async function checkCompetitors(cfg: Config, tab: string, opts: { skipDays?: number } = {}): Promise<CompSummary> {
-  const skipDays = opts.skipDays ?? SKIP_DAYS;
+// This month's Tavily searches (credits): used, limit and left. Cached for a minute.
+export interface Quota { used: number; limit: number; left: number; plan: string }
+let usageCache: { at: number; q: Quota } | null = null;
+export function forgetUsage() { usageCache = null; }
+export async function tavilyUsage(cfg: Config): Promise<Quota | null> {
+  if (!cfg.tavilyKey) return null;
+  if (usageCache && Date.now() - usageCache.at < 60_000) return usageCache.q;
+  const res = await fetch(cfg.tavilyBase + '/usage', { headers: { Authorization: 'Bearer ' + cfg.tavilyKey }, signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new ToolError('upstream_error', `Tavily usage answered HTTP ${res.status}`, 502);
+  const d = (await res.json()) as { key?: { usage?: number; limit?: number | null }; account?: { current_plan?: string; plan_usage?: number; plan_limit?: number } };
+  const a = d.account || {}, k = d.key || {};
+  const used = Number(a.plan_usage ?? k.usage ?? 0);
+  const limit = Number(a.plan_limit ?? k.limit ?? 0);
+  const q = { used, limit, left: Math.max(0, limit - used), plan: String(a.current_plan || '') };
+  usageCache = { at: Date.now(), q };
+  return q;
+}
+
+export interface Plan { name: string; comps: Comp[]; rows: { row: number; sid: string; host: string; r: string[] }[]; skipped: number; message?: string }
+
+// Which rows a check would search (one Tavily search each), without searching.
+export async function planCheck(cfg: Config, tab: string, skipDays = SKIP_DAYS): Promise<Plan> {
   const ref = tabRef(tab);
   const vals = (await sheets.getValues(cfg, cfg.sa, ref + '!A1:Q')).values as string[][];
   const name = String(vals[0]?.[1] || tab).trim();
   const comps = parseComps(String(vals[0]?.[12] || ''));
-  if (!comps.length) return { tab, searched: 0, skipped: 0, withHits: 0, message: `Add ${name}'s competitors in cell M1 of their tab first, as Name (domain), separated by commas.` };
+  if (!comps.length) return { name, comps, rows: [], skipped: 0, message: `Add ${name}'s competitors in cell M1 of their tab first, as Name (domain), separated by commas.` };
 
   const hostBySid: Record<string, string> = {};
   for (const r of (await sheets.getValues(cfg, cfg.sa, 'Sites!A2:C')).values as string[][]) {
@@ -87,6 +107,18 @@ export async function checkCompetitors(cfg: Config, tab: string, opts: { skipDay
     if (skipDays > 0 && !isNaN(last) && last >= cutoff) { skipped++; return; }
     rows.push({ row, sid, host: hostBySid[sid], r: r || [] });
   });
+  return { name, comps, rows, skipped };
+}
+
+export async function checkCompetitors(cfg: Config, tab: string, opts: { skipDays?: number } = {}): Promise<CompSummary> {
+  const ref = tabRef(tab);
+  const plan = await planCheck(cfg, tab, opts.skipDays ?? SKIP_DAYS);
+  if (plan.message) return { tab, searched: 0, skipped: 0, withHits: 0, message: plan.message };
+  const { comps, rows, skipped } = plan;
+  const quota = await tavilyUsage(cfg).catch(() => null);
+  if (quota && quota.left < rows.length) {
+    return { tab, searched: 0, skipped, withHits: 0, message: `This check needs about ${rows.length} searches but only ${quota.left.toLocaleString('en')} of this month's ${quota.limit.toLocaleString('en')} are left. Nothing was searched.` };
+  }
 
   const terms = comps.flatMap((c) => [`"${c.name}"`, ...(c.dom ? [`"${c.dom}"`] : [])]).join(' OR ');
   const when = today() + ' · ' + AUTO;
@@ -129,5 +161,6 @@ export async function checkCompetitors(cfg: Config, tab: string, opts: { skipDay
     const safe = data.filter((d) => { const row = Number(d.range.match(/O(\d+):/)![1]); return ids[row - 1] === bySid.get(row); });
     if (safe.length) await sheets.batchUpdateValues(cfg, cfg.sa, safe, 'RAW');
   }
+  forgetUsage();
   return { tab, searched, skipped, withHits, stoppedEarly };
 }
