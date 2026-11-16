@@ -31,8 +31,10 @@ export function parseComps(raw: string): Comp[] {
   });
 }
 
-function nameRe(name: string) {
-  const core = name.replace(/\b(malaysia|sdn\.? bhd\.?|berhad|bhd|plc|ltd|limited|group)\b/gi, '').trim() || name;
+// The competitor's full name (legal suffixes like Sdn Bhd optional). Words like "Malaysia" stay
+// in: dropping them made "Primal Malaysia" match any page saying "primal".
+export function nameRe(name: string) {
+  const core = name.replace(/\b(sdn\.? bhd\.?|berhad|bhd|plc|ltd|limited)\b\.?/gi, '').trim() || name;
   return new RegExp('(^|[^a-z0-9])' + core.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[\\s-]*') + '([^a-z0-9]|$)', 'i');
 }
 const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
@@ -60,7 +62,10 @@ export async function tavilySearch(cfg: Config, query: string, host: string): Pr
   }
 }
 
-export async function checkCompetitors(cfg: Config, tab: string, who = 'auto check'): Promise<CompSummary> {
+export const AUTO = 'auto check';
+
+export async function checkCompetitors(cfg: Config, tab: string, opts: { skipDays?: number } = {}): Promise<CompSummary> {
+  const skipDays = opts.skipDays ?? SKIP_DAYS;
   const ref = tabRef(tab);
   const vals = (await sheets.getValues(cfg, cfg.sa, ref + '!A1:Q')).values as string[][];
   const name = String(vals[0]?.[1] || tab).trim();
@@ -71,7 +76,7 @@ export async function checkCompetitors(cfg: Config, tab: string, who = 'auto che
   for (const r of (await sheets.getValues(cfg, cfg.sa, 'Sites!A2:C')).values as string[][]) {
     if (r[0] && r[2]) hostBySid[r[0]] = normDom(r[2]).replace(/^business\./, '');
   }
-  const cutoff = Date.now() - SKIP_DAYS * 86_400_000;
+  const cutoff = Date.now() - skipDays * 86_400_000;
   const rows: { row: number; sid: string; host: string; r: string[] }[] = [];
   let skipped = 0;
   vals.forEach((r, i) => {
@@ -79,12 +84,12 @@ export async function checkCompetitors(cfg: Config, tab: string, who = 'auto che
     if (row < FIRST_ROW || !sid || !hostBySid[sid]) return;
     if (low(r[2]) === 'no' || /not applicable/i.test(String(r[8] || ''))) return;
     const last = Date.parse(String(r[15] || '').split(' · ')[0]);
-    if (!isNaN(last) && last >= cutoff) { skipped++; return; }
+    if (skipDays > 0 && !isNaN(last) && last >= cutoff) { skipped++; return; }
     rows.push({ row, sid, host: hostBySid[sid], r: r || [] });
   });
 
   const terms = comps.flatMap((c) => [`"${c.name}"`, ...(c.dom ? [`"${c.dom}"`] : [])]).join(' OR ');
-  const when = today() + ' · ' + who;
+  const when = today() + ' · ' + AUTO;
   const data: { range: string; values: string[][] }[] = [];
   let stoppedEarly: string | undefined, searched = 0, withHits = 0, next = 0;
 
@@ -98,11 +103,14 @@ export async function checkCompetitors(cfg: Config, tab: string, who = 'auto che
       }
       searched++;
       hits = hits.filter((h) => { const hh = hostOf(h.url); return hh === x.host || hh.endsWith('.' + x.host); });
-      // Keep what was found before (often a person's manual check); add anything new.
+      // Keep a person's earlier finds and add anything new. Earlier automatic results are replaced,
+      // so a wrong match doesn't stick. Error values like #REF! count as empty.
       const prevFound = String(x.r[14] || '').trim();
-      const found = /^none/i.test(prevFound) || !prevFound ? [] : prevFound.split(/\s*[,;]\s*/).filter(Boolean);
+      const manual = !String(x.r[15] || '').endsWith('· ' + AUTO);
+      const keep = manual && prevFound && !/^none/i.test(prevFound) && !prevFound.startsWith('#');
+      const found = keep ? prevFound.split(/\s*[,;]\s*/).filter(Boolean) : [];
       const ev: Record<string, string> = {};
-      String(x.r[16] || '').split(/\s*;\s*|\n/).forEach((p) => { const m = p.match(/^(.+?):\s*(https?:\/\/\S+)\s*$/); if (m) ev[m[1].trim()] = m[2]; });
+      if (keep) String(x.r[16] || '').split(/\s*;\s*|\n/).forEach((p) => { const m = p.match(/^(.+?):\s*(https?:\/\/\S+)\s*$/); if (m) ev[m[1].trim()] = m[2]; });
       for (const c of comps) {
         const re = nameRe(c.name), d = c.dom.toLowerCase();
         const m = hits.find((h) => re.test(h.text.toLowerCase()) || (d && h.text.toLowerCase().includes(d)));

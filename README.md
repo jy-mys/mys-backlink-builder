@@ -226,7 +226,8 @@ repository secret**, name `CRON_SECRET`, paste. Test it from the **Actions** tab
 On the same `/links` page, staff can click **Check competitors on all of … 's sites**. For every in-scope site on the
 client's tab it makes one [Tavily](https://tavily.com) search limited to that site's domain, for the competitors in
 cell M1, and writes **Competitors found / Checked on / Evidence** (O–Q): the same columns the main page's Check uses,
-so results show there. Earlier finds (often a person's manual check) are kept; new ones are added. Sites checked in the
+so results show there. A person's earlier finds are kept and new ones added; earlier automatic results are replaced, so a
+wrong match doesn't stick. Names must match in full ("Primal Malaysia", not just "Primal"), or the competitor's domain. Sites checked in the
 last 7 days are skipped. It costs about one search per site (MYSense: ~25), and Tavily's free plan allows 1,000 a month.
 When they run out, the check stops and says so; nothing is charged.
 

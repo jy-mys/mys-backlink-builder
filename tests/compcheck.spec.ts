@@ -96,3 +96,25 @@ test('monthly endpoint checks every client with the cron secret only', async () 
   expect(body.clients[1].message).toContain('cell M1');
   await ctx.dispose();
 });
+
+test('matches the full competitor name, not a word from it', async () => {
+  const { nameRe } = await import('../src/compcheck.js');
+  const primal = nameRe('Primal Malaysia');
+  expect(primal.test('primal malaysia sdn bhd, kuala lumpur')).toBe(true);
+  expect(primal.test('primal-malaysia digital')).toBe(true);
+  expect(primal.test('the liver king and the primal diet')).toBe(false);
+  expect(primal.test('fashion stylists in cyprus: primal studio')).toBe(false);
+  expect(nameRe('Locus-T Sdn Bhd').test('locus-t is an agency')).toBe(true);
+});
+
+test('earlier automatic results are replaced; a person\'s finds and #REF! are handled', async () => {
+  const g = tab();
+  g[4][14] = 'Exabytes'; g[4][15] = '1 Nov 2026 · auto check'; g[4][16] = 'Exabytes: https://wrong.example/x'; // auto: replaced
+  g[5][14] = '#REF!'; g[5][15] = '#REF!'; g[5][16] = '';                                                      // broken: ignored
+  await run('MYSense');
+  expect(g[4][14]).toBe('Locus-T, Primal Malaysia');
+  expect(g[4][16]).not.toContain('wrong.example');
+  expect(g[5][14]).toBe('Locus-T, Primal Malaysia');
+  expect(g[6][14]).toBe('Locus-T, Primal Malaysia'); // row 7 had a person's find (Locus-T), kept with its evidence
+  expect(g[6][16]).toContain('Locus-T: https://example.com/locus');
+});
