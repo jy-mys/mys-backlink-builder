@@ -16,6 +16,11 @@ const sid = (i: number) => BUILD_SITES[i].sid as string;
 const host = (s: any) => String(s.dom).toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[/?#\s]/)[0].replace(/^business\./, '');
 const q = (s: string) => JSON.stringify(s); // CSS attribute value
 
+// The app's server also fills "Date submitted" (column V) when a row is saved as Submitted. The
+// original page has no server, so those writes are compared separately.
+const isDateSubmitted = (w: { range: string }) => /!V\d+$/.test(w.range);
+const pageWrites = () => st.upstream.writes.filter((w) => !isDateSubmitted(w));
+
 async function both(browser: Browser, flow: (page: Page) => Promise<void>) {
   const out: Record<string, unknown[]> = {};
   for (const target of ['original', 'app'] as const) {
@@ -28,14 +33,14 @@ async function both(browser: Browser, flow: (page: Page) => Promise<void>) {
     await settle(page);
     await flow(page);
     await page.waitForLoadState('networkidle');
-    out[target] = st.upstream.writes.map((w) => ({ ...w }));
+    out[target] = pageWrites().map((w) => ({ ...w }));
     await context.close();
   }
   expect(out.app, 'web app writes the same as the artifact').toEqual(out.original);
   return out.app;
 }
 
-const waitWrites = (n: number) => expect.poll(() => st.upstream.writes.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(n);
+const waitWrites = (n: number) => expect.poll(() => pageWrites().length, { timeout: 10_000 }).toBeGreaterThanOrEqual(n);
 
 test('load clients, then pick a client', async ({ browser }) => {
   const writes = await both(browser, async (page) => {
@@ -72,6 +77,8 @@ test('change a status; marking Live asks for the URL and fills the date', async 
     { range: "'MYSense'!I8:N8", values: [['Submitted', '', '', ME, '', '']] },
     { range: "'MYSense'!I9:N9", values: [['Live', 'https://directory.example/mysense', '', ME, TODAY, '']] },
   ]);
+  // In the app (the last run), the Submitted row also got its Date submitted; the Live row didn't.
+  expect(st.upstream.writes.filter(isDateSubmitted).map((w) => w.range)).toEqual(["'MYSense'!V8"]);
 });
 
 test('save the detail row', async ({ browser }) => {

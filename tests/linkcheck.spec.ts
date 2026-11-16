@@ -3,6 +3,7 @@ import zlib from 'node:zlib';
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { fetchPage, findLinks, isPrivateIp } from '../src/crawl.js';
 import { startStack, sessionCookie, CRON_SECRET, type Stack } from './helpers.js';
+import { SHEET_ID } from './fixtures/sheet.js';
 
 // The live-link crawler opens each Live row's URL itself (no Firecrawl) and records whether the
 // page still links to the client's website. Local pages stand in for the directories.
@@ -165,4 +166,23 @@ test('a row marked "In progress" in the sheet shows as In progress in the app', 
   await expect(sel.first()).toHaveValue('prog');
   await expect(sel.first().locator('option:checked')).toHaveText('In progress');
   await ctx.close();
+});
+
+test('saving a row as Submitted fills Date submitted (column V) once', async () => {
+  const today = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date());
+  const ctx = await pwRequest.newContext();
+  const save = (range: string, status: string) => ctx.post(st.appUrl + '/api/tool', {
+    headers: { 'Content-Type': 'application/json', Origin: st.appUrl, Cookie: cookie() },
+    data: { server: 'Google Sheets', tool: 'update_values', input: { spreadsheetId: SHEET_ID, range, values: [[status, '', '', 'Aina', '', '']] } },
+  });
+  expect((await save("'MYSense'!I8:N8", 'Submitted')).status()).toBe(200);
+  expect(tab()[7][21]).toBe(today);
+  tab()[7][21] = '3 Nov 2026';
+  await save("'MYSense'!I8:N8", 'Submitted'); // already dated: kept
+  expect(tab()[7][21]).toBe('3 Nov 2026');
+  await save("'MYSense'!I9:N9", 'Live');      // other statuses: no date
+  expect(tab()[8][21] || '').toBe('');
+  await save("'Dr Tan''s Clinic'!I5:N5", 'Submitted'); // quoted tab names work
+  expect(st.upstream.store.sheets.get("Dr Tan's Clinic")![4][21]).toBe(today);
+  await ctx.dispose();
 });

@@ -237,6 +237,13 @@ searches run out mid-check, it stops and says so; nothing is charged. The live-l
 Staff only, to keep within the free searches. Search engines don't see every listing, so "None found" means "not found
 by search".
 
+## Date submitted
+
+Client tabs have **Date submitted** in column V. When someone sets a row to **Submitted** in the app, the server fills
+V with that day's date (Malaysia time) if it's empty, so it records the first submission. Other statuses leave it alone;
+it can also be typed by hand. Columns T and U (Industries / Verdict lookups for **In scope**) are hidden helpers: don't
+type in them.
+
 ## Who can sign in
 
 - **Permanent staff:** any account in `ALLOWED_DOMAINS` (`mysense.com.my`), plus anyone in `ALLOWED_EMAILS`.

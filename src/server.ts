@@ -6,6 +6,7 @@ import { INDEX_PATH, PUBLIC_DIR, isStaff, loadConfig, type Config } from './conf
 import { authRouter } from './auth.js';
 import { privacyPage } from './privacy.js';
 import { cronRouter, linksRouter } from './linkcheck.js';
+import { stampSubmitted, submittedRow } from './datesubmitted.js';
 import { ToolError } from './errors.js';
 import { RateLimiter } from './ratelimit.js';
 import { checkOrigin, inlineScriptHash, securityHeaders } from './security.js';
@@ -74,7 +75,11 @@ export function createApp(cfg: Config, access = new AccessList(cfg)) {
     try {
       const s = await signedIn(req, res);
       if (!s) return sendError(cfg, res, new ToolError('not_granted', 'Not signed in', 401));
-      res.json({ payload: await runTool(cfg, req.body, { email: s.email, limiter, sa: cfg.sa }) });
+      const payload = await runTool(cfg, req.body, { email: s.email, limiter, sa: cfg.sa });
+      // A row saved as Submitted gets "Date submitted" (column V) if it has none yet.
+      const hit = req.body?.tool === 'update_values' ? submittedRow(req.body?.input?.range, req.body?.input?.values) : null;
+      if (hit) await stampSubmitted(cfg, hit).catch((e) => console.error('Date submitted not filled: ' + (e as Error).message));
+      res.json({ payload });
     } catch (err) {
       sendError(cfg, res, err);
     }
