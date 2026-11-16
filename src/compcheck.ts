@@ -73,10 +73,15 @@ export async function tavilyUsage(cfg: Config): Promise<Quota | null> {
   if (usageCache && Date.now() - usageCache.at < 60_000) return usageCache.q;
   const res = await fetch(cfg.tavilyBase + '/usage', { headers: { Authorization: 'Bearer ' + cfg.tavilyKey }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new ToolError('upstream_error', `Tavily usage answered HTTP ${res.status}`, 502);
-  const d = (await res.json()) as { key?: { usage?: number; limit?: number | null }; account?: { current_plan?: string; plan_usage?: number; plan_limit?: number } };
+  type U = { usage?: number; limit?: number | null; search_usage?: number; current_plan?: string; plan_usage?: number; plan_limit?: number };
+  const d = (await res.json()) as { key?: U; account?: U };
   const a = d.account || {}, k = d.key || {};
-  const used = Number(a.plan_usage ?? k.usage ?? 0);
-  const limit = Number(a.plan_limit ?? k.limit ?? 0);
+  // Tavily keeps several counters (per key, per account, search only). Use the highest, so the
+  // page never shows fewer searches used than Tavily has counted.
+  const nums = [a.plan_usage, a.search_usage, k.usage, k.search_usage].map(Number).filter((n) => Number.isFinite(n));
+  const used = nums.length ? Math.max(...nums) : 0;
+  const limit = Number(a.plan_limit || k.limit || 1000);
+  console.log('Tavily usage: ' + JSON.stringify({ key: { usage: k.usage, search_usage: k.search_usage, limit: k.limit }, account: { plan: a.current_plan, plan_usage: a.plan_usage, search_usage: a.search_usage, plan_limit: a.plan_limit } }));
   const q = { used, limit, left: Math.max(0, limit - used), plan: String(a.current_plan || '') };
   usageCache = { at: Date.now(), q };
   return q;

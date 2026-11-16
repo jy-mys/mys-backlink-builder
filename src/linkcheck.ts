@@ -135,7 +135,7 @@ export function linksRouter(cfg: Config, access: AccessList): Router {
     const head = '<h2 style="font-size:16px;margin-top:32px">Competitor check, all sites</h2>' +
       `<p>Searches each in-scope site on ${escapeHtml(tab)}'s tab for the competitors in cell M1, using Tavily's free plan ` +
       '(1,000 searches a month, about one per site). Results go into Competitors found, Checked on and Evidence (O–Q), the same ' +
-      'columns as the Check button on the main page. Sites checked in the last 7 days are skipped, and earlier finds are kept. It also runs by itself on the 1st of each month.</p>';
+      'columns as the Check button on the main page. Sites checked in the last 7 days are skipped. Finds a person entered are kept; earlier automatic results are replaced. It also runs by itself on the 1st of each month.</p>';
     if (!cfg.tavilyKey) return head + '<p class="note">Off: add TAVILY_API_KEY in Render to turn it on.</p>';
     if (!staff) return head + quota + '<p class="note">Staff can run this, to keep within the free monthly searches.</p>';
     return head + quota + `<form method="post" action="/links/competitors" style="margin:16px 0"><input type="hidden" name="tab" value="${escapeHtml(tab)}">` +
