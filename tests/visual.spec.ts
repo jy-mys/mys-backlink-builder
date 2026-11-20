@@ -24,13 +24,14 @@ async function shot(browser: Browser, target: 'original' | 'app', vp: { w: numbe
   await prepare(page);
   await page.goto(target === 'app' ? st.appUrl : st.originalUrl);
   await settle(page);
-  // The app's own additions (Check live links, Manage interns, column filters) aren't in the original; leave them out.
+  // The app's own additions (Check live links, Manage interns, table and Start here filters) aren't in the original; leave them out.
   if (target === 'app') {
     await page.locator('#mbbStaff').waitFor();
     await page.evaluate(() => {
       document.getElementById('mbbStaff')!.remove(); document.getElementById('mbbLinks')!.remove();
       // The column filter row isn't in the original either.
       document.getElementById('mbbFilterCss')!.remove();
+      document.getElementById('mbbStartBar')!.remove(); document.getElementById('mbbStartCss')!.remove();
       document.head.insertAdjacentHTML('beforeend', '<style>.mbb-frow{display:none!important}</style>');
     });
   }

@@ -230,3 +230,41 @@ test('the build table can be filtered by its columns', async ({ browser }) => {
   expect(seo).toEqual(['Status', 'Who can do it', 'Priority', 'Cost', 'Link value', 'Verdict', 'Link type', 'MY traffic / mo', 'Spam risk']);
   await ctx.close();
 });
+
+test('the Start here list can be filtered by status, cost and link value', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: 'mbb', value: sessionCookie(st, { email: STAFF, name: 'Lead' }), url: st.appUrl }]);
+  const page = await ctx.newPage();
+  await page.goto(st.appUrl);
+  await page.waitForFunction(() => !!document.querySelector('#clientSel option[value="MYSense"]'));
+  await page.selectOption('#clientSel', 'MYSense');
+  await page.waitForFunction(() => /Connected to the Backlink Tracker sheet/.test(document.getElementById('sheetBar')!.textContent || ''));
+  const cards = () => page.locator('#startList li:has(input[data-start]):visible');
+  const total = await cards().count();
+  expect(total).toBeGreaterThan(2);
+  expect(await page.locator('#mbbStartBar select').evaluateAll((s) => s.map((x) => x.getAttribute('data-mbbs')))).toEqual(['Status', 'Cost', 'Link value']);
+
+  // Link value: options come from the Sites tab, with counts that add up to the list.
+  const link = page.locator('select[data-mbbs="Link value"]');
+  const opts = (await link.locator('option').allTextContents()).slice(1);
+  expect(opts.reduce((n, t) => n + Number(t.match(/\((\d+)\)$/)![1]), 0)).toBe(total);
+  const first = opts[0].replace(/ \(\d+\)$/, ''), n = Number(opts[0].match(/\((\d+)\)$/)![1]);
+  await link.selectOption(first);
+  await expect(cards()).toHaveCount(n);
+
+  // Status follows the tick box: tick the first card (marks it Live), then filter on Live.
+  await page.locator('.mbb-sclear').click();
+  await expect(cards()).toHaveCount(total);
+  const firstBox = page.locator('#startList input[data-start]').first();
+  const sid = await firstBox.getAttribute('data-start');
+  await firstBox.check();
+  await page.waitForFunction(() => /Saved/.test(document.getElementById('toast')!.textContent || ''));
+  await page.locator('select[data-mbbs="Status"]').selectOption('Live');
+  await expect(page.locator(`#startList li:visible input[data-start="${sid}"]`)).toHaveCount(1);
+  for (const box of await page.locator('#startList li:visible input[data-start]').all()) await expect(box).toBeChecked();
+
+  // No match says so.
+  await page.locator('select[data-mbbs="Link value"]').selectOption({ index: (await link.locator('option').count()) - 1 });
+  if (await cards().count() === 0) await expect(page.locator('.mbb-snone')).toBeVisible();
+  await ctx.close();
+});

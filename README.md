@@ -246,7 +246,13 @@ type in them.
 
 ## Column filters
 
-The "Everything to build" table has a row of dropdowns under its headings: Status, Who can do it, Priority, Cost and Link value, plus Verdict, Link type, MY traffic and Spam risk in the SEO view. Filters combine with each other, the who chips and the search box, and stay set while the page redraws. "Clear filters" (under Site) resets them. On phones the dropdowns sit above the cards. Added by `public/shim.js`, so `public/index.html` stays the original page.
+The "Everything to build" table has a row of dropdowns under its headings: Status, Who can do it, Priority, Cost and Link value, plus Verdict, Link type, MY traffic and Spam risk in the SEO view. Filters combine with each other, the who chips and the search box, and stay set while the page redraws. "Clear filters" (under Site) resets them. On phones the dropdowns sit above the cards.
+
+"Start here" has its own Status, Cost and Link value filters above the cards. Cost and Link value come from the Sites tab (read by the page anyway); Status from the table or the card's tick box.
+
+Both are added by `public/shim.js`, so `public/index.html` stays the original page.
+
+**Client tabs and sorting:** the lookup formulas (Site, In scope, Who, Next step, Priority, Cost, Link value, the hidden T:U lookups, and Site URL in W) live in the header row 4 as `ARRAYFORMULA({"Header"; ...})`, so sorting or filtering rows 5 and below can't move them. Before 20 Nov 2026 they sat in row 5, and a sort by Site broke the MYSense tab.
 
 ## Who can sign in
 

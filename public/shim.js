@@ -26,7 +26,7 @@
         body: JSON.stringify({server: server, tool: tool, input: input})
       }).then(function(res){
         if (!res.ok) return readError(res);
-        return res.json().then(function(body){ return {payload: body.payload}; });
+        return res.json().then(function(body){ noteRead(tool, input, body.payload); return {payload: body.payload}; });
       }, network);
     }
   };
@@ -193,6 +193,110 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupFilters);
   else setupFilters();
+
+  // Filters for "Start here": Status, Cost and Link value. Cost and Link value come from the
+  // page's own read of the Sites tab (or the built-in list before that); Status from the table's
+  // status dropdown, the client tab read, or the card's tick box.
+  var siteInfo = {}, tabStatus = {};
+  function noteRead(tool, input, payload){
+    if (tool !== 'get_values' || !input || !payload || !payload.values) return;
+    if (input.range === 'Sites!A2:P') payload.values.forEach(function(r){ if (r && r[0]) siteInfo[r[0]] = {cost: r[9] || '', link: r[11] || ''}; });
+    else if (/^'.+'!A1:Q$/.test(input.range || '')) { tabStatus = {}; payload.values.forEach(function(r, i){ if (i >= 4 && r && r[0]) tabStatus[r[0]] = r[8] || 'Not started'; }); }
+  }
+  function builtInInfo(){
+    try {
+      JSON.parse(document.getElementById('data').textContent).sites.forEach(function(x){
+        if (x.sid && !siteInfo[x.sid]) siteInfo[x.sid] = {cost: x.cost || '', link: x.link || ''};
+      });
+    } catch (e) {}
+  }
+  var startFilters = {};
+  function setupStartFilters(){
+    var list = document.getElementById('startList');
+    if (!list) return;
+    builtInInfo();
+    var bar = document.createElement('div');
+    bar.id = 'mbbStartBar';
+    bar.className = 'mbb-sbar';
+    list.parentNode.insertBefore(bar, list);
+    var css = document.createElement('style');
+    css.id = 'mbbStartCss';
+    css.textContent = '.mbb-sbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin:0 0 12px}' +
+      '.mbb-sbar label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}' +
+      '.mbb-sbar select{font:inherit;font-size:12.5px;color:var(--ink,inherit);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:130px}' +
+      '.mbb-sbar select.on{border-color:var(--ink-btn);font-weight:600}.mbb-sbar .linkbtn{font-size:12.5px;padding-bottom:5px}' +
+      '.startlist li.mbb-snone{grid-column:1/-1;border-style:dashed;padding:10px 12px;font-size:13px;color:var(--muted)}';
+    document.head.appendChild(css);
+    var cols = [['Status', 'Status'], ['Cost', 'Cost'], ['Link value', 'Link value']];
+    function statusOf(sid, li){
+      var sel = document.querySelector('select.stsel[data-status="' + CSS.escape(sid) + '"]');
+      if (sel && sel.options[sel.selectedIndex]) return sel.options[sel.selectedIndex].text;
+      var box = li.querySelector('input[data-start]');
+      if (box && box.checked) return 'Live';
+      return tabStatus[sid] || 'Not started';
+    }
+    function valueOf(col, li){
+      var sid = li.querySelector('input[data-start]').getAttribute('data-start'), info = siteInfo[sid] || {};
+      if (col === 'Status') return statusOf(sid, li);
+      return (col === 'Cost' ? info.cost : info.link) || '-';
+    }
+    var observer = new MutationObserver(function(){ observer.disconnect(); apply(); observer.observe(list, {childList: true}); });
+    function apply(){
+      var none = list.querySelector('.mbb-snone'); if (none) none.remove();
+      var items = Array.prototype.slice.call(list.querySelectorAll('li')).filter(function(li){ return li.querySelector('input[data-start]'); });
+      var opts = {};
+      cols.forEach(function(c){ opts[c[0]] = {}; });
+      items.forEach(function(li){ cols.forEach(function(c){ var v = valueOf(c[0], li); opts[c[0]][v] = (opts[c[0]][v] || 0) + 1; }); });
+      var on = Object.keys(startFilters).filter(function(k){ return startFilters[k]; });
+      bar.innerHTML = '';
+      cols.forEach(function(c){
+        var lab = document.createElement('label');
+        lab.textContent = c[1];
+        var sel = document.createElement('select');
+        sel.setAttribute('data-mbbs', c[0]);
+        sel.setAttribute('aria-label', 'Filter Start here by ' + c[1]);
+        var keys = Object.keys(opts[c[0]]);
+        if (startFilters[c[0]] && keys.indexOf(startFilters[c[0]]) < 0) keys.push(startFilters[c[0]]);
+        var all = document.createElement('option'); all.value = ''; all.textContent = 'All (' + items.length + ')'; sel.appendChild(all);
+        keys.forEach(function(v){ var o = document.createElement('option'); o.value = v; o.textContent = v + ' (' + (opts[c[0]][v] || 0) + ')'; sel.appendChild(o); });
+        sel.value = startFilters[c[0]] || '';
+        if (startFilters[c[0]]) sel.className = 'on';
+        lab.appendChild(sel);
+        bar.appendChild(lab);
+      });
+      if (on.length) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'linkbtn mbb-sclear'; b.textContent = 'Clear filters';
+        bar.appendChild(b);
+      }
+      var shown = 0;
+      items.forEach(function(li){
+        var ok = on.every(function(k){ return valueOf(k, li) === startFilters[k]; });
+        li.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      });
+      if (on.length && !shown && items.length) {
+        var e = document.createElement('li');
+        e.className = 'mbb-snone';
+        e.textContent = 'None of these sites match the filters.';
+        list.appendChild(e);
+      }
+    }
+    document.addEventListener('change', function(ev){
+      var t = ev.target;
+      if (t.hasAttribute && t.hasAttribute('data-mbbs')) { startFilters[t.getAttribute('data-mbbs')] = t.value; observer.disconnect(); apply(); observer.observe(list, {childList: true}); }
+    });
+    document.addEventListener('click', function(ev){
+      if (!ev.target.closest || !ev.target.closest('.mbb-sclear')) return;
+      startFilters = {}; observer.disconnect(); apply(); observer.observe(list, {childList: true});
+    });
+    // The table redraws after a status change; refresh the Status options then too.
+    var rows = document.getElementById('rows');
+    if (rows) new MutationObserver(function(){ observer.disconnect(); apply(); observer.observe(list, {childList: true}); }).observe(rows, {childList: true});
+    apply(); observer.observe(list, {childList: true});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupStartFilters);
+  else setupStartFilters();
 
   window.claude = {
     use: function(name){
