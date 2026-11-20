@@ -244,6 +244,10 @@ V with that day's date (Malaysia time) if it's empty, so it records the first su
 it can also be typed by hand. Columns T and U (Industries / Verdict lookups for **In scope**) are hidden helpers: don't
 type in them.
 
+## Column filters
+
+The "Everything to build" table has a row of dropdowns under its headings: Status, Who can do it, Priority, Cost and Link value, plus Verdict, Link type, MY traffic and Spam risk in the SEO view. Filters combine with each other, the who chips and the search box, and stay set while the page redraws. "Clear filters" (under Site) resets them. On phones the dropdowns sit above the cards. Added by `public/shim.js`, so `public/index.html` stays the original page.
+
 ## Who can sign in
 
 - **Permanent staff:** any account in `ALLOWED_DOMAINS` (`mysense.com.my`), plus anyone in `ALLOWED_EMAILS`.

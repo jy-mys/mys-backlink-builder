@@ -186,3 +186,47 @@ test('saving a row as Submitted fills Date submitted (column V) once', async () 
   expect(st.upstream.store.sheets.get("Dr Tan's Clinic")![4][21]).toBe(today);
   await ctx.dispose();
 });
+
+test('the build table can be filtered by its columns', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: 'mbb', value: sessionCookie(st, { email: STAFF, name: 'Lead' }), url: st.appUrl }]);
+  const page = await ctx.newPage();
+  await page.goto(st.appUrl);
+  await page.waitForFunction(() => !!document.querySelector('#clientSel option[value="MYSense"]'));
+  await page.selectOption('#clientSel', 'MYSense');
+  await page.waitForFunction(() => /Connected to the Backlink Tracker sheet/.test(document.getElementById('sheetBar')!.textContent || ''));
+  const visible = () => page.locator('#rows tr.r:visible');
+  const total = await visible().count();
+  expect(total).toBeGreaterThan(3);
+  // One dropdown per category column, none for Site or Next step.
+  const labels = await page.locator('.mbb-frow select').evaluateAll((s) => s.map((x) => x.getAttribute('data-mbbf')));
+  expect(labels).toEqual(['Status', 'Who can do it', 'Priority', 'Cost', 'Link value']);
+
+  const cost = page.locator('select[data-mbbf="Cost"]');
+  const free = (await cost.locator('option').allTextContents()).find((t) => /^Free \(\d+\)$/.test(t))!;
+  await cost.selectOption({ label: free });
+  const n = Number(free.match(/\((\d+)\)/)![1]);
+  await expect(visible()).toHaveCount(n);
+  for (const t of await page.locator('#rows tr.r:visible td[data-l="Cost"]').allTextContents()) expect(t.trim()).toBe('Free');
+  await expect(page.locator('#count')).toHaveText(new RegExp(`^Showing ${n} of \\d+ \\(filtered\\)$`));
+
+  // Filters survive the page redrawing the table (here: the search box), and combine with it.
+  await page.fill('#q', 'google');
+  await expect(page.locator('select[data-mbbf="Cost"]')).toHaveValue('Free');
+  for (const t of await page.locator('#rows tr.r:visible td[data-l="Cost"]').allTextContents()) expect(t.trim()).toBe('Free');
+  await page.fill('#q', '');
+
+  // A combination with no rows says so, and Clear filters brings everything back.
+  await page.locator('select[data-mbbf="Status"]').selectOption({ index: 1 });
+  await page.locator('select[data-mbbf="Cost"]').selectOption('Paid').catch(() => null);
+  if (await visible().count() === 0) await expect(page.locator('.mbb-empty')).toContainText('No sites match these filters');
+  await page.locator('.mbb-clear').first().click();
+  await expect(visible()).toHaveCount(total);
+  await expect(page.locator('#count')).not.toContainText('filtered');
+
+  // The SEO view adds its own category columns.
+  await page.check('#seoCk');
+  const seo = await page.locator('.mbb-frow select').evaluateAll((s) => s.map((x) => x.getAttribute('data-mbbf')));
+  expect(seo).toEqual(['Status', 'Who can do it', 'Priority', 'Cost', 'Link value', 'Verdict', 'Link type', 'MY traffic / mo', 'Spam risk']);
+  await ctx.close();
+});
